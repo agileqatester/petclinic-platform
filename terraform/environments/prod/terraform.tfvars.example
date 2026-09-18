@@ -1,0 +1,7 @@
+# Copy to terraform.tfvars (gitignored) and fill in local values.
+# Do not commit terraform.tfvars.
+
+aws_region     = "eu-central-1"
+environment    = "prod"
+project        = "petclinic"
+aws_account_id = "833123247984"
