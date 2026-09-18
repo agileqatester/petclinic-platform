@@ -1,0 +1,69 @@
+---
+description: Helm chart, values hierarchy, and image tag conventions
+globs: helm/**,helm-values/**/*.yaml,helm-values/**/*.yml
+alwaysApply: false
+---
+
+# Helm Rules
+
+## Chart Structure
+
+Single generic chart shared by all 8 services:
+
+```
+helm/petclinic-service/
+├── Chart.yaml
+├── values.yaml
+└── templates/
+    ├── _helpers.tpl
+    ├── deployment.yaml
+    ├── service.yaml
+    ├── configmap.yaml
+    ├── serviceaccount.yaml
+    ├── hpa.yaml
+    ├── pdb.yaml
+    └── NOTES.txt
+```
+
+## Values Hierarchy
+
+ArgoCD merges last-wins:
+
+1. `helm/petclinic-service/values.yaml` — chart defaults
+2. `helm-values/{service}.yaml` — ports, env, init containers, image.name
+3. `helm-values/{env}.yaml` — replicas, HPA/PDB, `image.registry`
+
+## Per-Service Values
+
+Each service file MUST specify `service.port`, `image.name` (service name only), `springProfiles`, `env`, `secrets`, and `initContainers`.
+
+## Per-Environment Values
+
+- `dev.yaml` — 1 replica, no HPA/PDB, registry `petclinic-dev`
+- `prod.yaml` — 2 replicas, HPA/PDB per service, registry `petclinic-prod`
+
+Registry is `{account_id}.dkr.ecr.eu-central-1.amazonaws.com/petclinic-{env}`. **Never hardcode an AWS account ID.**
+
+## Templates
+
+- Use `_helpers.tpl` for labels/names/selectors
+- Conditional HPA/PDB/ConfigMap with `{{- if .Values.x.enabled }}`
+- NEVER put secrets in values files — ExternalSecret CRs in `k8s/base/external-secrets/`
+- Default `image.tag` must not be `latest`. Use an empty string or `changeme` that CI overwrites with a SHA
+
+## Validation
+
+```bash
+helm template petclinic helm/petclinic-service/ \
+  -f helm-values/{service}.yaml \
+  -f helm-values/{env}.yaml
+helm lint helm/petclinic-service/ \
+  -f helm-values/{service}.yaml \
+  -f helm-values/{env}.yaml
+```
+
+## Startup Order
+
+- config-server: no init containers
+- discovery-server: wait for config-server:8888
+- all others: wait for config-server and discovery-server

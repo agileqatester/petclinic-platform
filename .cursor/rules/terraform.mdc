@@ -1,0 +1,63 @@
+---
+description: Terraform module structure, naming, tags, and security for petclinic-platform
+globs: terraform/**/*.tf,terraform/**/*.tfvars,terraform/**/*.tfvars.example
+alwaysApply: false
+---
+
+# Terraform Rules
+
+## Module Structure
+
+Every module directory MUST contain:
+- `main.tf` — resource definitions
+- `variables.tf` — input variables with descriptions and types
+- `outputs.tf` — exported values (IDs, ARNs, endpoints)
+- `versions.tf` — required_providers with Terraform `>= 1.6.0` and AWS provider `~> 6.0`
+
+Environment root modules (`terraform/environments/{env}/`) additionally have:
+- `backend.tf` — S3 backend configuration (SSE-KMS)
+- `terraform.tfvars.example` — placeholder values (commit this, never real `*.tfvars`)
+
+## Naming
+
+- Resource names: `petclinic-{env}-{resource}`
+- Terraform identifiers, variables, outputs: snake_case
+- Outputs prefixed by resource type (`vpc_id`, `eks_cluster_endpoint`)
+
+## Required Tags
+
+```hcl
+tags = {
+  Project     = "petclinic"
+  Environment = var.environment
+  ManagedBy   = "terraform"
+}
+```
+
+Prefer `default_tags` on the AWS provider plus a module `tags` variable for service-specific tags.
+
+## Security
+
+- No inline credentials. RDS passwords go to Secrets Manager; mark outputs `sensitive = true`
+- Block public access on every S3 bucket
+- No wildcard IAM (`Action = "*"` + `Resource = "*"`)
+- Encrypt RDS, S3 (SSE-KMS with rotation), EBS
+- Security groups are the perimeter (all-public subnets, ADR-0001)
+- EKS public API: CIDR-restricted to the operator `/32`, never `0.0.0.0/0`
+- Node launch templates: IMDSv2 `http_tokens = required`, `http_put_response_hop_limit = 1`
+- RDS `publicly_accessible = false`
+- Prod RDS: `deletion_protection = true`, `skip_final_snapshot = false`
+
+## Versions (Sep 2026)
+
+- Kubernetes 1.35, AMI `AL2023_ARM_64_STANDARD`, auth mode `API`, `upgrade_policy.support_type = STANDARD`
+- RDS MySQL 8.4, storage `gp3`
+- Never pin an EKS version in extended support ($0.60/hour)
+
+## Workflow
+
+1. `terraform fmt -recursive`
+2. `terraform validate`
+3. `terraform plan -out plan.out`
+4. Review destroys before apply
+5. `terraform apply plan.out` only

@@ -1,0 +1,33 @@
+{
+  "mcpServers": {
+    "terraform": {
+      "command": "bash",
+      "args": [
+        ".cursor/run-terraform-mcp.sh"
+      ]
+    },
+    "aws-knowledge-mcp": {
+      "url": "https://knowledge-mcp.global.api.aws"
+    },
+    "awslabs.aws-pricing-mcp-server": {
+      "command": "uvx",
+      "args": [
+        "--from",
+        "awslabs.aws-pricing-mcp-server@latest",
+        "awslabs.aws-pricing-mcp-server"
+      ],
+      "env": {
+        "FASTMCP_LOG_LEVEL": "ERROR",
+        "AWS_PROFILE": "petclinic",
+        "AWS_REGION": "eu-central-1"
+      }
+    },
+    "context7": {
+      "command": "npx",
+      "args": [
+        "-y",
+        "@upstash/context7-mcp"
+      ]
+    }
+  }
+}

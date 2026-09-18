@@ -10,7 +10,7 @@
 
 | Epic # | Epic | Priority | Stories |
 |--------|------|----------|---------|
-| E-0 | Claude Code Setup | P0 | 5 |
+| E-0 | Cursor Agent Setup | P0 | 5 |
 | E-1 | Foundation & Remote State | P0 | 5 |
 | E-2 | Networking (VPC) | P0 | 5 |
 | E-3 | EKS Cluster | P0 | 7 |
@@ -35,7 +35,7 @@
 ## Epic Dependencies
 
 ```
-E-0 (Claude Code Setup) ──→ E-1 (Foundation)
+E-0 (Cursor Agent Setup) ──→ E-1 (Foundation)
 E-1 (Foundation)
  └─→ E-2 (VPC)
       └─→ E-3 (EKS) ──→ E-8 (K8s Base) ──→ E-16 (Helm Charts)
@@ -61,10 +61,10 @@ E-1 (Foundation)
 
 ---
 
-# EPIC E-0: Claude Code Setup
+# EPIC E-0: Cursor Agent Setup
 
 **Priority:** P0
-**Description:** Configure Claude Code for the petclinic-platform repo before writing any infrastructure code. This sets up the AI agent's context, safety guardrails, workflows, and tooling so every subsequent task benefits from intelligent assistance.
+**Description:** Configure Cursor for the petclinic-platform repo before writing any infrastructure code. This sets up the agent's context (`AGENTS.md`), safety hooks, file rules, subagents, skills, and MCP servers so every subsequent task benefits from the same guardrails.
 **Blocked by:** None
 **Blocks:** E-1 (all subsequent work uses this configuration)
 
@@ -74,115 +74,109 @@ E-1 (Foundation)
 
 **Type:** Task
 **Priority:** P0
-**Epic:** E-0 Claude Code Setup
+**Epic:** E-0 Cursor Agent Setup
 **Story Points:** 2
-**Labels:** claude, mcp, foundation
+**Labels:** cursor, mcp, foundation
 **Blocked by:** None
 
 **Description:**
-Create `.mcp.json` at the project root with all MCP servers needed for the infrastructure workflow. These servers give Claude Code access to Terraform docs, AWS knowledge, pricing data, library documentation, and Jira.
+Create `.cursor/mcp.json` with the MCP servers needed for the infrastructure workflow (HashiCorp Terraform Registry docs, AWS knowledge, AWS pricing, Context7). **Do not add Atlassian/Jira** — work is tracked in `docs/jira-backlog.md`. AWS Labs yanked `awslabs-terraform-mcp-server`; use HashiCorp `terraform-mcp-server`. Checkov stays CLI (`security-scan` skill).
 
 **Acceptance Criteria:**
-- [ ] `.mcp.json` at petclinic-platform root
-- [ ] Terraform MCP server configured (`awslabs.terraform-mcp-server`)
-- [ ] AWS Knowledge MCP configured (`aws-knowledge-mcp`)
-- [ ] AWS Pricing MCP configured (`awslabs.aws-pricing-mcp-server`, region: eu-central-1)
-- [ ] Context7 MCP configured (library documentation)
-- [ ] Atlassian MCP configured (Jira ticket management)
-- [ ] No secrets stored in `.mcp.json` — credentials come from user's local environment
+- [x] `.cursor/mcp.json` at petclinic-platform (Cursor project MCP)
+- [x] Terraform MCP server configured (`terraform` → HashiCorp `terraform-mcp-server`, not the yanked AWS Labs package)
+
+- [x] AWS Knowledge MCP configured (`aws-knowledge-mcp`)
+- [x] AWS Pricing MCP configured (`awslabs.aws-pricing-mcp-server`, region: eu-central-1)
+- [x] Context7 MCP configured (library documentation)
+- [x] Atlassian/Jira MCP **not** configured — local `docs/jira-backlog.md` only
+- [x] No secrets stored in MCP config — credentials come from the user's local environment
+- [ ] Student enables the servers in Cursor Settings → MCP and trusts the workspace
 
 ---
 
-### PETPLAT-002: Create Claude Code safety hooks
+### PETPLAT-002: Create Cursor safety hooks
 
 **Type:** Task
 **Priority:** P0
-**Epic:** E-0 Claude Code Setup
+**Epic:** E-0 Cursor Agent Setup
 **Story Points:** 3
-**Labels:** claude, safety, foundation
+**Labels:** cursor, safety, foundation
 **Blocked by:** PETPLAT-001
 
 **Description:**
-Create safety hook scripts in `.claude/hooks/` and configure them in `.claude/settings.json`. Hooks prevent Claude Code from running dangerous commands (terraform destroy, rm -rf on infra dirs, committing secrets) and warn about risky operations (apply without saved plan). Also add an informational hook that suggests `terraform validate` after editing .tf files.
+Create safety hook scripts in `.cursor/hooks/` and configure them in `.cursor/hooks.json`. Hooks prevent the agent from running dangerous commands (`terraform destroy`, `rm -rf` on infra dirs, committing secrets) and ask before `terraform apply` without a saved plan. An informational hook suggests validation after editing infra files.
 
 **Acceptance Criteria:**
-- [ ] `.claude/settings.json` with PreToolUse and PostToolUse hook configuration
-- [ ] `block-destroy.sh` — blocks `terraform destroy` (exit 2, hard deny)
-- [ ] `block-dangerous-rm.sh` — blocks `rm -rf` on terraform/, k8s/, .github/, docs/, scripts/
-- [ ] `warn-apply-without-plan.sh` — warns on `terraform apply` without plan.out (exit 1, ask user)
-- [ ] `suggest-validate.sh` — suggests `terraform validate` after .tf edits (exit 0, informational)
-- [ ] `block-secret-commit.sh` — blocks git add/commit of .env, .tfvars, .pem, credentials files
-- [ ] All scripts use `jq` for JSON parsing, include educational comments
-- [ ] 3-tier model: block (exit 2) / warn (exit 1) / inform (exit 0)
+- [x] `.cursor/hooks.json` with `beforeShellExecution`, `beforeMCPExecution`, `afterFileEdit`
+- [x] `block-destroy.sh` — denies `terraform destroy` / prod kubectl deletes (`failClosed: true`)
+- [x] `block-dangerous-rm.sh` — denies `rm -rf` on terraform/, k8s/, helm/, .github/, .cursor/, docs/, scripts/
+- [x] `warn-apply-without-plan.sh` — `permission: ask` on apply without plan.out
+- [x] `suggest-validate.sh` — suggests validate after .tf / Helm / workflow edits
+- [x] `block-secret-commit.sh` — denies `git add .` and secret-like filenames
+- [x] `block-mcp-destroy.sh` — denies MCP Terraform `destroy`
+- [x] Scripts parse Cursor JSON (`command` / `file_path`) with `jq` and return JSON permissions
+- [x] 3-tier model: deny / ask / inform
 
 ---
 
-### PETPLAT-003: Create Claude Code rules, agents, and skills
+### PETPLAT-003: Create Cursor rules, agents, and skills
 
 **Type:** Task
 **Priority:** P0
-**Epic:** E-0 Claude Code Setup
+**Epic:** E-0 Cursor Agent Setup
 **Story Points:** 5
-**Labels:** claude, automation, foundation
+**Labels:** cursor, automation, foundation
 **Blocked by:** PETPLAT-82
 
 **Description:**
-Create file-pattern rules (`.claude/rules/`), review subagents (`.claude/agents/`), and operational skills (`.claude/skills/`) for the infrastructure workflow.
+Create file-pattern rules (`.cursor/rules/*.mdc`), read-only subagents (`.cursor/agents/`), and operational skills (`.cursor/skills/`) for the infrastructure workflow.
 
-**Rules** load automatically when editing matching files:
-- `terraform.md` — conventions for `terraform/**/*.tf`
-- `kubernetes.md` — conventions for `k8s/**/*.yaml`
-- `pipelines.md` — conventions for `.github/workflows/**/*.yml`
-- `docs.md` — conventions for `docs/**/*.md`
+**Rules** (`globs` + `alwaysApply: false`):
+- `terraform.mdc` — `terraform/**/*.tf`
+- `kubernetes.mdc` — `k8s/**/*.yaml`
+- `helm.mdc` — `helm/**`, `helm-values/**`
+- `pipelines.mdc` — `.github/workflows/**`
+- `docs.mdc` — `docs/**/*.md`
 
-**Agents** are read-only reviewers (no Write/Edit):
-- `terraform-reviewer.md` — security, cost, best-practice review
-- `k8s-validator.md` — manifest validation with dry-run
-- `security-auditor.md` — comprehensive cross-IaC security audit
-- `cost-reviewer.md` — AWS cost estimation and optimization
-- `doc-reviewer.md` — documentation quality and accuracy review
-- `pipeline-reviewer.md` — CI/CD pipeline security and best practices
+**Agents** (`readonly: true`):
+- `terraform-reviewer.md`
+- `k8s-validator.md`
+- `security-auditor.md`
+- `cost-reviewer.md`
+- `doc-reviewer.md`
+- `pipeline-reviewer.md`
 
-**Skills** are slash commands for common operations:
-- `/terraform-plan [env]` — init + plan (manual only)
-- `/terraform-apply [env]` — apply saved plan with confirmation (manual only)
-- `/security-scan [module|all]` — Checkov scan (manual only)
-- `/deploy-dev [service|all]` — deploy to dev namespace (manual only)
-- `/deploy-prod [service|all]` — deploy to prod with extra safety (manual only)
-- `/smoke-test [env]` — health check all services (manual only)
-- `/logs [service] [env]` — fetch and filter pod logs (manual only)
-- `/rollback [service] [env]` — rollback deployment (manual only)
-- `/review-terraform [path]` — review against checklist (auto-invocable)
+**Skills:**
+- terraform-plan, terraform-apply, security-scan, deploy-dev, deploy-prod, smoke-test, logs, rollback (manual: `disable-model-invocation: true`)
+- review-terraform (auto-invocable)
 
 **Acceptance Criteria:**
-- [ ] 4 rule files with `paths:` frontmatter for selective loading (terraform, kubernetes, pipelines, docs)
-- [ ] 6 agent files — read-only tools only, structured output format
-- [ ] 9 skill directories with SKILL.md — 8 manual (`disable-model-invocation: true`), 1 auto-invocable
-- [ ] All skills accept arguments (environment or service name)
-- [ ] Deploy-prod has extra confirmation step vs deploy-dev
-- [ ] Agents report findings in structured format with file:line references
+- [x] 5 `.mdc` rule files with `globs`
+- [x] 6 readonly agents with structured output
+- [x] 9 skill directories with SKILL.md
+- [x] Deploy-prod requires extra confirmation vs deploy-dev
 
 ---
 
-### PETPLAT-004: Verify Claude Code configuration end-to-end
+### PETPLAT-004: Verify Cursor configuration end-to-end
 
 **Type:** Task
 **Priority:** P0
-**Epic:** E-0 Claude Code Setup
+**Epic:** E-0 Cursor Agent Setup
 **Story Points:** 1
-**Labels:** claude, verification
+**Labels:** cursor, verification
 **Blocked by:** PETPLAT-003
 
 **Description:**
-Start a new Claude Code session in petclinic-platform/ and verify the full configuration is working: CLAUDE.md loads, MCP servers connect, skills appear, hooks fire, rules activate on file patterns.
+Start a new Cursor Agent chat in petclinic-platform/ and verify the configuration: AGENTS.md loads, MCP servers connect after trust, skills are discoverable, hooks fire, rules activate on matching files.
 
 **Acceptance Criteria:**
-- [ ] CLAUDE.md project conventions visible in Claude's context
-- [ ] Type `/` and all 7 skills appear in autocomplete
-- [ ] Ask Claude to run `terraform destroy` — blocked by hook
-- [ ] Create a test .tf file — terraform rules activate
-- [ ] MCP servers respond (test with a Terraform docs search)
-- [ ] All files committed to git
+- [ ] AGENTS.md conventions visible in the agent context
+- [ ] Asking the agent to run `terraform destroy` is blocked by the hook
+- [ ] Editing a `.tf` file activates terraform rules
+- [ ] MCP servers respond after enabling them in Cursor Settings
+- [ ] Files committed to git
 
 ---
 
@@ -300,13 +294,13 @@ Configure the S3 backend in `terraform/environments/prod/backend.tf` with key `p
 **Labels:** terraform, foundation
 
 **Description:**
-Set up provider configuration and version constraints in both environment root modules. Pin Terraform >= 1.6.0 and AWS provider ~> 5.0.
+Set up provider configuration and version constraints in both environment root modules. Pin Terraform >= 1.6.0 and AWS provider ~> 6.0.
 
 **Technical Spec:** [General Project Parameters](./technical-spec.md#general-project-parameters)
 
 **Acceptance Criteria:**
 - [ ] `versions.tf` in both dev/ and prod/ with required_version >= 1.6.0
-- [ ] AWS provider source and version constraint (~> 5.0) defined
+- [ ] AWS provider source and version constraint (~> 6.0) defined
 - [ ] `providers.tf` in both environments configuring AWS provider with `var.aws_region`
 - [ ] `variables.tf` defines aws_region variable (default: eu-central-1)
 - [ ] `variables.tf` defines environment variable (dev or prod)
@@ -488,7 +482,7 @@ Run `terraform apply` for the dev environment and verify the VPC is created corr
 Create the EKS module in `terraform/modules/eks/` that provisions:
 
 **Technical Spec:** [EKS Cluster](./technical-spec.md#eks-cluster), [Terraform Modules](./technical-spec.md#terraform-modules)
-- EKS cluster with Kubernetes version 1.29+
+- EKS cluster with Kubernetes version **1.35** (standard support), auth mode `API`, `upgrade_policy.support_type = STANDARD`
 - Cluster IAM role with AmazonEKSClusterPolicy
 - OIDC provider for IRSA (IAM Roles for Service Accounts)
 - Cluster placed in public subnets (all-public design, see ADR-0001)
@@ -502,6 +496,7 @@ Create the EKS module in `terraform/modules/eks/` that provisions:
 - [ ] Cluster uses public subnets
 - [ ] Cluster security group attached
 - [ ] Cluster logging enabled (api, audit, authenticator)
+- [ ] Public API CIDR-restricted via `api_allowed_cidrs` (operator /32) — never 0.0.0.0/0
 - [ ] Outputs: cluster_name, cluster_endpoint, cluster_ca_certificate, oidc_provider_arn, oidc_provider_url
 - [ ] `terraform validate` passes
 
@@ -528,10 +523,12 @@ Add a managed node group configuration to the EKS module:
 **Acceptance Criteria:**
 - [ ] Managed node group resource created
 - [ ] Node IAM role with AmazonEKSWorkerNodePolicy, AmazonEKS_CNI_Policy, AmazonEC2ContainerRegistryReadOnly
-- [ ] Instance types configurable (default: ["t4g.small"] for dev — ARM/Graviton, free trial)
+- [ ] Instance types configurable (default: ["t4g.small"] for ARM/Graviton)
+- [ ] AMI type `AL2023_ARM_64_STANDARD`
+- [ ] Launch template with IMDSv2 `http_tokens = required` and `http_put_response_hop_limit = 1`
 - [ ] Scaling config: min_size, max_size, desired_size as variables
 - [ ] Nodes launched in public subnets
-- [ ] Disk size configurable (default: 20 GB — fits within 30 GB EBS free tier)
+- [ ] Disk size configurable (default: 20 GB gp3)
 - [ ] Node security group attached
 - [ ] Labels: environment, managed-by
 - [ ] Outputs: node_group_name, node_role_arn
@@ -549,7 +546,7 @@ Add a managed node group configuration to the EKS module:
 **Blocked by:** PETPLAT-12
 
 **Description:**
-Add EKS access entry or aws-auth ConfigMap configuration so the deploying IAM user/role can access the cluster. Add outputs or a script for `aws eks update-kubeconfig`.
+Add an EKS Access Entry for the deploying IAM principal (`authentication_mode = API` — do not use the aws-auth ConfigMap). Add outputs or a script for `aws eks update-kubeconfig`.
 
 **Technical Spec:** [EKS Cluster](./technical-spec.md#eks-cluster)
 
@@ -759,7 +756,7 @@ Create the RDS module in `terraform/modules/rds/` for a MySQL instance.
 
 **Acceptance Criteria:**
 - [ ] Module in `terraform/modules/rds/`
-- [ ] RDS MySQL 8.0 instance (single shared `petclinic` database for all 3 domain services)
+- [ ] RDS MySQL 8.4 instance (single shared `petclinic` database for all 3 domain services)
 - [ ] DB subnet group using the VPC subnets
 - [ ] RDS security group: allow 3306 from EKS node SG only
 - [ ] Storage encryption enabled (KMS or default)
@@ -2169,28 +2166,27 @@ Create ADRs for key architecture decisions made during the project.
 
 ---
 
-### PETPLAT-82: Create CLAUDE.md for petclinic-platform repo
+### PETPLAT-82: Create AGENTS.md for petclinic-platform repo
 
 **Type:** Task
 **Priority:** P0
-**Epic:** E-0 Claude Code Setup
+**Epic:** E-0 Cursor Agent Setup
 **Story Points:** 3
-**Labels:** claude, foundation
+**Labels:** cursor, foundation
 **Blocked by:** None
 
 **Description:**
-Create a CLAUDE.md in petclinic-platform that gives Claude Code full context about the infrastructure repo. This is the first file created — it establishes conventions before any infrastructure code is written.
+Create `AGENTS.md` in petclinic-platform that gives Cursor full context about the infrastructure repo. This is the first file created — it establishes conventions before any infrastructure code is written.
 
 **Acceptance Criteria:**
-- [ ] `CLAUDE.md` at petclinic-platform root (< 200 lines)
-- [ ] Repo purpose and directory layout
-- [ ] Terraform conventions (module pattern, naming, state, tags)
-- [ ] K8s manifest conventions (labels, probes, resources, secrets)
-- [ ] Security rules (non-negotiable, 8 rules)
-- [ ] AWS environment details (dev vs prod table)
-- [ ] Application services table (8 services, ports, MySQL needs)
-- [ ] MCP servers documented
-- [ ] Does NOT duplicate workspace-level CLAUDE.md (app details)
+- [x] `AGENTS.md` at petclinic-platform root
+- [x] Repo purpose and directory layout
+- [x] Terraform conventions (module pattern, naming, state, tags, AWS provider ~> 6.0)
+- [x] K8s / Helm conventions (labels, probes, resources, secrets, EKS 1.35)
+- [x] Security rules (non-negotiable, including EKS API CIDR and IMDSv2)
+- [x] AWS environment details (dev vs prod table)
+- [x] Application services table (8 services, ports, MySQL needs)
+- [x] MCP servers documented (`.cursor/mcp.json`)
 
 ---
 
@@ -2952,7 +2948,7 @@ Test the complete GitOps loop: CI builds and pushes image → CI updates image t
 
 | Priority | Epics | Stories/Tasks |
 |----------|-------|---------------|
-| P0 | Claude Code Setup, Foundation, VPC, EKS, ECR, RDS, Secrets (Secrets Manager), K8s Base, CI Pipeline, Helm Charts, GitOps (ArgoCD) | 64 |
+| P0 | Cursor Agent Setup, Foundation, VPC, EKS, ECR, RDS, Secrets (Secrets Manager), K8s Base, CI Pipeline, Helm Charts, GitOps (ArgoCD) | 64 |
 | P1 | DNS, K8s Overlays, Observability, Security, Docs | 38 |
 | P2 | Scaling & Cost (Karpenter) | 6 |
 | **Total** | **17 epics (E-12 removed = 16 active)** | **108 stories/tasks** |

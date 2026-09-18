@@ -1,0 +1,61 @@
+---
+description: Kubernetes manifests, probes, labels, and External Secrets conventions
+globs: k8s/**/*.yaml,k8s/**/*.yml
+alwaysApply: false
+---
+
+# Kubernetes Rules
+
+Workloads are packaged with Helm. `k8s/` holds cluster-scoped and GitOps objects that are not in the generic chart: namespaces, network policies, ExternalSecrets, ArgoCD install and Application CRs.
+
+## Directory Structure
+
+```
+k8s/
+├── base/
+│   ├── namespaces.yaml
+│   ├── network-policies/
+│   └── external-secrets/
+└── argocd/
+    ├── install/
+    └── applications/{dev,prod}/
+```
+
+Do not create Kustomize overlays or per-service Deployment YAML. Those were superseded by Helm (ADR-0007).
+
+## Required Labels
+
+```yaml
+metadata:
+  labels:
+    app.kubernetes.io/name: {service-name}
+    app.kubernetes.io/part-of: petclinic
+    app.kubernetes.io/managed-by: Helm
+    app.kubernetes.io/component: {server|service|gateway|admin}
+```
+
+## Deployment Requirements
+
+Every Deployment MUST include:
+
+1. **Probes** using Spring Boot Actuator (`/actuator/health/readiness`, `/actuator/health/liveness`, plus startupProbe). Config-server uses `/actuator/health` for all three.
+2. **Requests and limits** (memory 128Mi / 512Mi; CPU 100m / 500m; api-gateway 200m / 1000m).
+3. **Image with SHA tag**, never `latest`. Registry: `{account}.dkr.ecr.eu-central-1.amazonaws.com/petclinic-{env}/{service}`.
+4. **Pod security:** `runAsNonRoot: true`, `runAsUser: 1000`, drop ALL capabilities, `seccompProfile.type: RuntimeDefault`.
+5. **ingressClassName: alb** on Ingress. Do not use the deprecated `kubernetes.io/ingress.class` annotation.
+
+## Secrets
+
+- NEVER put secrets in YAML
+- ExternalSecret CRs use `apiVersion: external-secrets.io/v1`
+- Mount secrets as environment variables
+
+## Namespaces
+
+- Dev: `petclinic-dev` — Prod: `petclinic-prod`
+- PSA: enforce `baseline`, warn/audit `restricted`
+
+## Startup Order
+
+- All services except config-server wait for config-server:8888
+- Application services also wait for discovery-server:8761

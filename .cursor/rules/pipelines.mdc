@@ -1,0 +1,45 @@
+---
+description: GitHub Actions CI conventions — OIDC, SHA tags, no kubectl deploy
+globs: .github/workflows/**/*.yml,.github/workflows/**/*.yaml
+alwaysApply: false
+---
+
+# GitHub Actions Workflow Rules
+
+## Architecture
+
+GitHub Actions is **CI only**. ArgoCD is **CD**. CI never runs `kubectl apply` or `helm upgrade`.
+
+```
+.github/workflows/
+├── build-push.yml
+├── update-image-tags.yml
+└── reusable/
+```
+
+## Required Practices
+
+1. **No secrets in YAML** — GitHub Secrets only
+2. **AWS auth via OIDC** — `aws-actions/configure-aws-credentials` with `role-to-assume`
+3. **Image tags** — short commit SHA, never `latest`
+4. **ECR** — `aws ecr get-login-password --region eu-central-1`
+5. **Trivy** — fail the workflow on CRITICAL findings
+6. **`permissions:`** is least privilege (`contents: read`, `id-token: write` for OIDC)
+7. **Pin third-party actions to a commit SHA**, not `@vN` or `@latest`
+8. **Prod gate is ArgoCD manual sync**, not GitHub Environments
+
+## Triggers
+
+- `build-push.yml`: push to `main`
+- `update-image-tags.yml`: after successful build (`workflow_run` or `repository_dispatch`), commit SHA to `helm-values/{service}.yaml`
+
+## Secrets
+
+- `AWS_ROLE_ARN`, `AWS_REGION`, `AWS_ACCOUNT_ID` (or `ECR_REGISTRY`)
+- No EKS kubeconfig in CI
+
+## Error Handling
+
+- Fail on non-zero exit
+- Do not auto-retry failed deploys
+- Do not echo secrets or use `set -x` in steps that touch secrets

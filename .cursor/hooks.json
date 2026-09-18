@@ -1,0 +1,33 @@
+{
+  "version": 1,
+  "hooks": {
+    "beforeShellExecution": [
+      {
+        "command": "bash .cursor/hooks/block-destroy.sh",
+        "failClosed": true
+      },
+      {
+        "command": "bash .cursor/hooks/block-dangerous-rm.sh",
+        "failClosed": true
+      },
+      {
+        "command": "bash .cursor/hooks/warn-apply-without-plan.sh"
+      },
+      {
+        "command": "bash .cursor/hooks/block-secret-commit.sh",
+        "failClosed": true
+      }
+    ],
+    "beforeMCPExecution": [
+      {
+        "command": "bash .cursor/hooks/block-mcp-destroy.sh",
+        "failClosed": true
+      }
+    ],
+    "afterFileEdit": [
+      {
+        "command": "bash .cursor/hooks/suggest-validate.sh"
+      }
+    ]
+  }
+}

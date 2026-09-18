@@ -1,0 +1,54 @@
+---
+description: Operational docs, runbooks, and ADR format
+globs: docs/**/*.md
+alwaysApply: false
+---
+
+# Documentation Rules
+
+## Directory Structure
+
+```
+docs/
+├── technical-spec.md
+├── jira-backlog.md
+├── architecture.md
+├── runbook.md
+├── incident-playbook.md
+├── onboarding.md
+└── adr/
+```
+
+`technical-spec.md` and `jira-backlog.md` exist now. Other files are story outputs (E-15).
+
+## Writing Conventions
+
+1. Audience: internal DevOps/Cloud. Assume AWS + K8s familiarity.
+2. Tone: direct, actionable. Prefer copy-pasteable commands.
+3. Every doc: H1 title, Last Updated date, purpose (1-2 sentences), TOC if > 3 sections.
+4. Always specify env (`dev` / `prod`) or `{env}`.
+
+## ADR Format
+
+```markdown
+# ADR-{number}: {title}
+
+**Status:** Proposed | Accepted | Deprecated | Superseded by ADR-{N}
+**Date:** YYYY-MM-DD
+**Context:** {problem}
+**Decision:** {what and why}
+**Consequences:** {positive and negative}
+```
+
+## Cross-References
+
+- Terraform: `terraform/modules/{module}/`
+- GitOps/cluster objects: `k8s/base/` and `k8s/argocd/`
+- Workloads: `helm/petclinic-service/` + `helm-values/`
+- Include Jira IDs (PETPLAT-xxx)
+
+## What NOT to Include
+
+- No secrets, passwords, or API keys (even examples)
+- No personal names or emails (use roles)
+- No hardcoded AWS account IDs

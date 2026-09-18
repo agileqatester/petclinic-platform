@@ -44,10 +44,15 @@
 | Naming Convention | `petclinic-{env}-{resource}` (e.g., `petclinic-dev-vpc`, `petclinic-prod-eks`) |
 | Environments | `dev`, `prod` |
 | Terraform Version | `>= 1.6.0` |
-| AWS Provider Version | `~> 5.0` |
+| AWS Provider Version | `~> 6.0` |
+| Kubernetes (EKS) | `1.35` (standard support; extended support is $0.60/hour — never pin it) |
+| Node AMI | `AL2023_ARM_64_STANDARD` |
+| RDS Engine | MySQL `8.4` |
 | Spring Boot Version | `4.0.1` (parent POM: `org.springframework.boot:spring-boot-starter-parent`) |
 | Spring Cloud Version | `2025.1.0` (Oakwood) |
 | Java Version | `17` |
+
+> **Version pin (Sep 2026):** EKS 1.29 is past extended support. Standard-support versions are 1.34–1.36. This course pins **1.35** (same as `saas-ntier-lab`) so add-ons and Karpenter have runway without paying extended-support pricing. AL2 AMIs are not valid for this version — use Amazon Linux 2023. AWS provider 6.x is current for greenfield modules.
 
 ### Required Tags (All AWS Resources)
 
@@ -74,7 +79,7 @@ These tags are applied via `default_tags` in the AWS provider configuration. Mod
 |-----------|-------|
 | Backend Type | S3 with DynamoDB locking |
 | S3 Bucket | `petclinic-terraform-state-{account-id}` |
-| S3 Encryption | AES256 (SSE-S3) |
+| S3 Encryption | SSE-KMS, customer-managed CMK, annual rotation, S3 Bucket Keys |
 | S3 Versioning | Enabled |
 | S3 Public Access | All blocked (4 settings) |
 | DynamoDB Table | `petclinic-terraform-locks` |
@@ -187,9 +192,10 @@ Four security groups per environment. Security groups are the **primary access c
 | Parameter | Dev | Prod |
 |-----------|-----|------|
 | Cluster Name | `petclinic-dev` | `petclinic-prod` |
-| Kubernetes Version | `1.29` | `1.29` |
-| API Server Endpoint | Public | Public |
-| Authentication Mode | `API_AND_CONFIG_MAP` | `API_AND_CONFIG_MAP` |
+| Kubernetes Version | `1.35` | `1.35` |
+| Support type | `STANDARD` (`upgrade_policy.support_type`) | `STANDARD` |
+| API Server Endpoint | Public + private, **CIDR-restricted** to operator `/32` (`public_access_cidrs`). Never `0.0.0.0/0`. | Same |
+| Authentication Mode | `API` (no aws-auth ConfigMap) | `API` |
 | Cluster Logging | `api`, `audit`, `authenticator` | `api`, `audit`, `authenticator` |
 | Subnets | Public (AZ a + b) | Public (AZ a + b) |
 
@@ -210,12 +216,13 @@ Created from EKS cluster identity issuer URL. Required for IRSA (IAM Roles for S
 | Node Group Name | `petclinic-dev-nodes` | `petclinic-prod-nodes` |
 | Instance Types | `["t4g.small"]` | `["t4g.small"]` |
 | Architecture | ARM64 (Graviton) | ARM64 (Graviton) |
-| Capacity Type | `ON_DEMAND` (free trial until Dec 2026) | `ON_DEMAND` (free trial until Dec 2026) |
+| Capacity Type | `ON_DEMAND` (Graviton free trial until Dec 2026 — after that, Spot via Karpenter) | `ON_DEMAND` |
 | Min Size | 2 | 2 |
 | Max Size | 4 | 4 |
 | Desired Size | 2 | 2 |
-| Disk Size | 20 GB | 20 GB |
-| AMI Type | `AL2_ARM_64` | `AL2_ARM_64` |
+| Disk Size | 20 GB gp3 | 20 GB gp3 |
+| AMI Type | `AL2023_ARM_64_STANDARD` | `AL2023_ARM_64_STANDARD` |
+| IMDS | `http_tokens = required`, `http_put_response_hop_limit = 1` | Same |
 
 > **Cost note:** t4g.small instances (2 vCPU, 2 GiB) are eligible for the AWS Graviton free trial (750 hrs/month until Dec 2026). Both dev and prod use identical sizing — this is a cost optimization for a learning project. In production, you would use larger instances (e.g., m7g.xlarge). Students should understand this trade-off.
 
@@ -236,7 +243,21 @@ Created from EKS cluster identity issuer URL. Required for IRSA (IAM Roles for S
 | `vpc-cni` | Pod networking | No |
 | `aws-ebs-csi-driver` | EBS PersistentVolumes (Prometheus, Grafana) | Yes (`AmazonEBSCSIDriverPolicy`) |
 
-Add-on versions pinned (not `latest`). Resolve conflicts strategy: `OVERWRITE` for initial setup.
+Add-on versions pinned (not `latest`). Resolve conflicts strategy: `OVERWRITE` for initial setup. Enable VPC CNI NetworkPolicy (`enableNetworkPolicy: "true"`) so namespace NetworkPolicies actually enforce.
+
+### Node launch template (required for IMDS)
+
+Managed node groups must use a launch template so IMDS cannot be reached from pods:
+
+```hcl
+metadata_options {
+  http_endpoint               = "enabled"
+  http_tokens                 = "required" # IMDSv2 only
+  http_put_response_hop_limit = 1          # pods cannot use the node role
+}
+```
+
+Disk type: `gp3`, encrypted. Do not rely on node-group `disk_size` alone if the launch template owns the block device mapping.
 
 ---
 
@@ -315,21 +336,22 @@ ECR Private: 500 MB free tier, then $0.10/GB/month. With 8 services at ~200 MB e
 
 | Parameter | Dev | Prod |
 |-----------|-----|------|
-| Engine | MySQL 8.0 | MySQL 8.0 |
+| Engine | MySQL 8.4 | MySQL 8.4 |
 | Instance Class | `db.t4g.micro` | `db.t4g.micro` |
 | Multi-AZ | `false` | `false` (single-AZ, cost optimization for learning) |
 | Allocated Storage | 20 GB | 20 GB |
 | Max Allocated Storage (autoscaling) | 20 GB | 20 GB |
-| Storage Type | `gp2` | `gp2` |
+| Storage Type | `gp3` | `gp3` |
 | Storage Encrypted | `true` (AWS default KMS key) | `true` (AWS default KMS key) |
+| Publicly accessible | `false` | `false` |
 | Backup Retention | 7 days | 7 days |
-| Skip Final Snapshot | `true` | `true` |
-| Deletion Protection | `false` | `false` |
-
-> **Cost note:** db.t4g.micro (2 vCPU, 1 GiB) is AWS RDS free tier eligible (750 hrs/month for 12 months, 20 GB gp2 storage). Both dev and prod use identical sizing — this is a cost optimization for a learning project. In production, you would use db.r7g.large or higher with Multi-AZ, gp3 storage, 30-day backups, deletion protection, and a final snapshot. Students should understand these implications.
+| Skip Final Snapshot | `true` | `false` |
+| Deletion Protection | `false` | `true` |
 | DB Identifier | `petclinic-dev-mysql` | `petclinic-prod-mysql` |
 | Master Username | `petclinic` | `petclinic` |
 | Master Password | Generated via `random_password` | Generated via `random_password` |
+
+> **Cost note:** db.t4g.micro (2 vCPU, 1 GiB) is AWS RDS free tier eligible (750 hrs/month for 12 months, 20 GB storage). Both envs use identical sizing for learning. In production you would use Multi-AZ, larger instance classes, 30-day backups, deletion protection, and a final snapshot. Students should understand this trade-off.
 
 ### Parameter Group
 
@@ -416,7 +438,7 @@ RDS credentials are created by the RDS module with `random_password` (16+ chars,
 ### ClusterSecretStore Configuration
 
 ```yaml
-apiVersion: external-secrets.io/v1beta1
+apiVersion: external-secrets.io/v1
 kind: ClusterSecretStore
 metadata:
   name: aws-secrets-manager
@@ -487,17 +509,24 @@ spec:
 | Auth | IRSA (see [IRSA Roles](#irsa-roles)) |
 | IngressClass | `alb` |
 
-### Ingress Resource Annotations
+### Ingress Resource
+
+Use `spec.ingressClassName` (the `kubernetes.io/ingress.class` annotation is deprecated on 1.35):
 
 ```yaml
-kubernetes.io/ingress.class: alb
-alb.ingress.kubernetes.io/scheme: internet-facing
-alb.ingress.kubernetes.io/target-type: ip
-alb.ingress.kubernetes.io/certificate-arn: "{acm-certificate-arn}"
-alb.ingress.kubernetes.io/listen-ports: '[{"HTTP": 80}, {"HTTPS": 443}]'
-alb.ingress.kubernetes.io/ssl-redirect: "443"
-alb.ingress.kubernetes.io/healthcheck-path: /actuator/health
-alb.ingress.kubernetes.io/healthcheck-port: "8080"
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  annotations:
+    alb.ingress.kubernetes.io/scheme: internet-facing
+    alb.ingress.kubernetes.io/target-type: ip
+    alb.ingress.kubernetes.io/certificate-arn: "{acm-certificate-arn}"
+    alb.ingress.kubernetes.io/listen-ports: '[{"HTTP": 80}, {"HTTPS": 443}]'
+    alb.ingress.kubernetes.io/ssl-redirect: "443"
+    alb.ingress.kubernetes.io/healthcheck-path: /actuator/health
+    alb.ingress.kubernetes.io/healthcheck-port: "8080"
+spec:
+  ingressClassName: alb
 ```
 
 ### Ingress Routing
@@ -665,12 +694,16 @@ securityContext:
   runAsNonRoot: true
   runAsUser: 1000
   fsGroup: 1000
+  seccompProfile:
+    type: RuntimeDefault
 containers:
   - securityContext:
       allowPrivilegeEscalation: false
       capabilities:
         drop: ["ALL"]
       readOnlyRootFilesystem: false  # Spring Boot needs /tmp for file uploads and caching
+      seccompProfile:
+        type: RuntimeDefault
 ```
 
 ### Manifest File Structure
@@ -943,7 +976,7 @@ Five IAM Roles for Service Accounts, each with OIDC trust policy scoped to a spe
 | `petclinic-{env}-lb-controller-role` | `aws-load-balancer-controller` | `kube-system` | AWS Load Balancer Controller IAM policy (managed) | ALB Controller |
 | `petclinic-{env}-ebs-csi-role` | `ebs-csi-controller-sa` | `kube-system` | `AmazonEBSCSIDriverPolicy` (AWS managed) | EBS CSI Driver |
 | `petclinic-{env}-argocd-role` | `argocd-server` | `argocd` | Minimal: only needed if ArgoCD accesses AWS resources directly (optional) | ArgoCD |
-| `petclinic-{env}-karpenter-role` | `karpenter` | `kube-system` | Karpenter controller policy: `ec2:*`, `iam:PassRole`, `ssm:GetParameter`, `pricing:GetProducts`, `sqs:*`, `eks:DescribeCluster` (scoped) | Karpenter |
+| `petclinic-{env}-karpenter-role` | `karpenter` | `kube-system` | AWS-documented Karpenter v1 controller policy, scoped with `eks:cluster-name` tag conditions. Do not author a custom `ec2:*` / `sqs:*` on `*`. | Karpenter |
 
 ### IRSA Trust Policy Template
 
@@ -975,7 +1008,7 @@ Five IAM Roles for Service Accounts, each with OIDC trust policy scoped to a spe
 | Resource | Encryption at Rest | Encryption in Transit | Key |
 |----------|-------------------|----------------------|-----|
 | RDS MySQL | KMS (AWS default key) | SSL available (not enforced by default) | AWS managed |
-| S3 (state bucket) | SSE-S3 (AES256) | HTTPS enforced | AWS managed |
+| S3 (state bucket) | SSE-KMS (CMK, rotation on) | HTTPS enforced | Customer managed |
 | EBS Volumes | Default encryption enabled | N/A | AWS managed |
 | ECR Images | AES256 | HTTPS | AWS managed |
 | Secrets Manager | KMS (AWS default `aws/secretsmanager` key) | HTTPS | AWS managed |
@@ -1016,7 +1049,7 @@ This is a learning project. Instance choices maximize AWS free tier eligibility.
 | ALB | $0 | $0 | Free tier (750 hrs/mo, 12 months) |
 | S3 + DynamoDB (state) | $1 | $1 | Mostly free tier |
 | ECR Storage | ~$1 | ~$1 | 500 MB free, then $0.10/GB/month |
-| EBS (PVs — Prometheus, Grafana, Loki) | $2 | $2 | 30 GB gp2 free (12 months) |
+| EBS (PVs — Prometheus, Grafana, Loki) | $2 | $2 | 30 GB gp3 |
 | Route 53 | $1 | $1 | $0.50/zone + queries |
 | Secrets Manager | $1 | $1 | $0.40/secret/month (~3 secrets) |
 | Data Transfer | $1 | $1 | 100 GB/mo free |
@@ -1124,16 +1157,17 @@ No NAT Gateway cost ($0 saved vs ~$35-65/mo with NAT).
 |---------------|------|-------------|---------|
 | `project` | string | Project name | `"petclinic"` |
 | `environment` | string | Environment | — |
-| `cluster_version` | string | Kubernetes version | `"1.29"` |
+| `cluster_version` | string | Kubernetes version | `"1.35"` |
 | `subnet_ids` | list(string) | Subnet IDs for cluster | — |
 | `cluster_sg_id` | string | Cluster security group ID | — |
 | `node_sg_id` | string | Node security group ID | — |
 | `node_instance_types` | list(string) | Instance types for nodes | `["t4g.small"]` |
-| `node_ami_type` | string | AMI type for nodes | `"AL2_ARM_64"` |
+| `node_ami_type` | string | AMI type for nodes | `"AL2023_ARM_64_STANDARD"` |
 | `node_min_size` | number | Min node count | `2` |
 | `node_max_size` | number | Max node count | `4` |
 | `node_desired_size` | number | Desired node count | `2` |
 | `node_disk_size` | number | Disk size in GB | `20` |
+| `api_allowed_cidrs` | list(string) | CIDRs allowed to call the public EKS API (operator `/32`) | — (required) |
 | `tags` | map(string) | Additional tags | `{}` |
 
 | Output | Type | Description |
@@ -1280,7 +1314,7 @@ helm/
 replicaCount: 1
 image:
   repository: ""   # Set per-service: {account}.dkr.ecr.eu-central-1.amazonaws.com/petclinic-{env}/{service}
-  tag: "latest"    # Overridden by CI/CD
+  tag: ""          # CI sets a commit SHA. Never latest.
   pullPolicy: IfNotPresent
 
 service:
