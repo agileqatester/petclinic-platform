@@ -582,7 +582,7 @@ Create the EKS module in `terraform/modules/eks/` that provisions:
 - [ ] Cluster uses private subnets (public subnets remain for ALB)
 - [ ] Cluster security group attached
 - [ ] Cluster logging enabled (api, audit, authenticator)
-- [ ] Public API CIDR-restricted via `api_allowed_cidrs` (operator /32) — never 0.0.0.0/0
+- [ ] Public API CIDR-restricted via `api_allowed_cidrs` from `my_ip` `/32` (CLI `-var`, never tfvars) — never 0.0.0.0/0
 - [ ] Outputs: cluster_name, cluster_endpoint, cluster_ca_certificate, oidc_provider_arn, oidc_provider_url
 - [ ] `terraform validate` passes
 

@@ -41,9 +41,9 @@ Prefer `default_tags` on the AWS provider plus a module `tags` variable for serv
 - No inline credentials. RDS passwords go to Secrets Manager; mark outputs `sensitive = true`
 - Block public access on every S3 bucket
 - No wildcard IAM (`Action = "*"` + `Resource = "*"`)
-- Encrypt RDS, S3 (SSE-KMS with rotation), EBS
+- Encrypt RDS and the state bucket with the **same** CMK `alias/petclinic-terraform-state` (do not add a second key)
 - Security groups remain mandatory; nodes and RDS are in **private** subnets (ADR-0001)
-- EKS public API: CIDR-restricted to the operator `/32`, never `0.0.0.0/0`
+- EKS public API: `my_ip` `/32` at apply time, never `0.0.0.0/0`, never commit the IP
 - Node launch templates: IMDSv2 `http_tokens = required`, `http_put_response_hop_limit = 1`
 - RDS `publicly_accessible = false` in private subnets
 - No SSH; SSM Session Manager on nodes and NAT (`AmazonSSMManagedInstanceCore`)

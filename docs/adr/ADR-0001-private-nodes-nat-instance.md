@@ -13,14 +13,14 @@ Split Terraform by cost habit (same as saas-ntier-lab):
 
 Operator paths (included in this budget, no extra SKUs):
 
-- **kubectl** to the EKS API (public+private, `public_access_cidrs` = operator /32). Not SSM.
+- **kubectl** to the EKS API (public+private). `public_access_cidrs` is `my_ip` `/32` passed at apply — same as saas-ntier-lab: `-var="my_ip=$(curl -s https://checkip.amazonaws.com)/32"`. Never write it to tfvars; re-apply workload when the laptop IP changes. Never `0.0.0.0/0`. Not SSM.
 - **SSM Session Manager** on EKS nodes (host debug: kubelet, CNI, disk) and on the NAT instance (iptables repair only). Attach `AmazonSSMManagedInstanceCore`. No SSH port 22, no bastion. Optional SSM port-forward to RDS via a node (nodes already reach 3306). Session Manager itself is $0; agent traffic uses the NAT instance to reach public SSM endpoints while the learning stack is up. When that stack is destroyed there are no SSM targets.
 - **Workload egress** via NAT: ECR API, STS, Secrets Manager, config-server Git, genai OpenAI. S3/ECR layers use the S3 gateway.
 
-Keep IMDSv2 hop limit 1 on nodes and RDS `publicly_accessible = false`.
+Keep IMDSv2 hop limit 1 on nodes and RDS `publicly_accessible = false`. Encrypt RDS with the **same** CMK as the state bucket (`alias/petclinic-terraform-state`) — one key, already paid, no second CMK.
 
 **Consequences:**
-- Positive: Nodes and RDS are not internet-addressable. Security groups stay required but are no longer the only control. Matches the lab/interview pattern. Extra NAT cost is about $7/month per environment only if left on ($0.0096/hour t4g.micro in eu-central-1); the accepted habit is destroy-after-session, so NAT is ~$0.01/hour during learning. Course target remains under $50 AWS spend if EKS is not left overnight ($0.10/hour standard). SSM and kubectl add $0. Eight services still schedule on 2x t4g.small; NAT is a separate instance.
+- Positive: Nodes and RDS are not internet-addressable. Security groups stay required but are no longer the only control. Matches the lab/interview pattern. Extra NAT cost is about $7/month per environment only if left on ($0.0096/hour t4g.micro in eu-central-1); the accepted habit is destroy-after-session, so NAT is ~$0.01/hour during learning. Course target is under $20 AWS spend if the learning stack is destroyed after each session ($0.10/hour EKS standard; 24/7 is ~$73/month for the control plane alone). SSM and kubectl add $0. Eight services still schedule on 2x t4g.small; NAT is a separate instance.
 - Negative: Single-AZ NAT instance is a single point of failure and a small operational surface (iptables, AMI, SSM). t4g.micro is burst-limited; fine for learning image pulls, not for production throughput. SSM does not work with the network stack alone (no NAT, no instances). Interface VPCEs would make SSM work without NAT but blow the budget (~$9/month per endpoint-AZ).
 - Rejected — all-public IGW (course): cheapest if the only alternative is NAT Gateway, but nodes have public IPs; one open SG is an internet exposure. Savings versus this decision are ~$7/month idle, not $35-65.
 - Rejected — NAT Gateway: $0.052/hour (~$38/month) per gateway in eu-central-1, times two AZs if HA, plus $0.052/GB.

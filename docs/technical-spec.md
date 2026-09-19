@@ -94,7 +94,7 @@ These tags are applied via `default_tags` in the AWS provider configuration. Mod
 |-----------|-------|
 | Backend Type | S3 with DynamoDB locking |
 | S3 Bucket | `petclinic-terraform-state-{account-id}` |
-| S3 Encryption | SSE-KMS, customer-managed CMK, annual rotation, S3 Bucket Keys |
+| S3 Encryption | SSE-KMS, **one** customer-managed CMK `alias/petclinic-terraform-state`, annual rotation, S3 Bucket Keys. Same key encrypts RDS (no second CMK). |
 | S3 Versioning | Enabled |
 | S3 Public Access | All blocked (4 settings) |
 | DynamoDB Table | `petclinic-terraform-locks` |
@@ -230,7 +230,7 @@ Five security groups per environment. Security groups remain mandatory. Private 
 | Cluster Name | `petclinic-dev` | `petclinic-prod` |
 | Kubernetes Version | `1.35` | `1.35` |
 | Support type | `STANDARD` (`upgrade_policy.support_type`) | `STANDARD` |
-| API Server Endpoint | Public + private, **CIDR-restricted** to operator `/32` (`public_access_cidrs`). Never `0.0.0.0/0`. | Same |
+| API Server Endpoint | Public + private. `public_access_cidrs` = **`my_ip` `/32`**, never `0.0.0.0/0`. Pass at apply (see Operator IP). | Same |
 | Authentication Mode | `API` (no aws-auth ConfigMap) | `API` |
 | Cluster Logging | `api`, `audit`, `authenticator` | `api`, `audit`, `authenticator` |
 | Subnets | Private (nodes); public remain tagged for ALB | Same |
@@ -383,7 +383,7 @@ ECR Private: 500 MB free tier, then $0.10/GB/month. With 8 services at ~200 MB e
 | Allocated Storage | 20 GB | 20 GB |
 | Max Allocated Storage (autoscaling) | 20 GB | 20 GB |
 | Storage Type | `gp3` | `gp3` |
-| Storage Encrypted | `true` (AWS default KMS key) | `true` (AWS default KMS key) |
+| Storage Encrypted | `true`, KMS key = `alias/petclinic-terraform-state` (same CMK as the state bucket) | same |
 | Publicly accessible | `false` (private subnets; no IGW route) | `false` (private subnets; no IGW route) |
 | Backup Retention | 7 days | 7 days |
 | Skip Final Snapshot | `true` | `false` |
@@ -392,7 +392,7 @@ ECR Private: 500 MB free tier, then $0.10/GB/month. With 8 services at ~200 MB e
 | Master Username | `petclinic` | `petclinic` |
 | Master Password | Generated via `random_password` | Generated via `random_password` |
 
-> **Cost note:** db.t4g.micro (2 vCPU, 1 GiB) is AWS RDS free tier eligible (750 hrs/month for 12 months, 20 GB storage). Both envs use identical sizing for learning. In production you would use Multi-AZ, larger instance classes, 30-day backups, deletion protection, and a final snapshot. Students should understand this trade-off.
+> **Cost note:** db.t4g.micro (2 vCPU, 1 GiB) is AWS RDS free tier eligible (750 hrs/month for 12 months, 20 GB storage). Both envs use identical sizing for learning. Storage encryption uses the **existing** state CMK (`alias/petclinic-terraform-state`) so RDS does not add a second $1/month key. In production you would use Multi-AZ, larger instance classes, 30-day backups, deletion protection, and a final snapshot.
 
 ### Parameter Group
 
@@ -1068,8 +1068,8 @@ Five IAM Roles for Service Accounts, each with OIDC trust policy scoped to a spe
 
 | Resource | Encryption at Rest | Encryption in Transit | Key |
 |----------|-------------------|----------------------|-----|
-| RDS MySQL | KMS (AWS default key) | SSL available (not enforced by default) | AWS managed |
-| S3 (state bucket) | SSE-KMS (CMK, rotation on) | HTTPS enforced | Customer managed |
+| RDS MySQL | KMS (`alias/petclinic-terraform-state`) | SSL available (not enforced by default) | Same CMK as state bucket |
+| S3 (state bucket) | SSE-KMS (`alias/petclinic-terraform-state`, rotation on) | HTTPS enforced | Same CMK as RDS |
 | EBS Volumes | Default encryption enabled | N/A | AWS managed |
 | ECR Images | AES256 | HTTPS | AWS managed |
 | Secrets Manager | KMS (AWS default `aws/secretsmanager` key) | HTTPS | AWS managed |
@@ -1098,7 +1098,7 @@ Five IAM Roles for Service Accounts, each with OIDC trust policy scoped to a spe
 
 | Path | How | Cost |
 |------|-----|------|
-| kubectl | EKS API public+private, `public_access_cidrs` = operator `/32` | included in EKS control plane |
+| kubectl | EKS API public+private, `public_access_cidrs` = `my_ip` `/32` (CLI `-var`, never tfvars) | included in EKS control plane |
 | Host debug (kubelet, CNI, disk) | SSM Session Manager on EKS nodes (`AmazonSSMManagedInstanceCore`) | $0; uses NAT to public SSM endpoints while the learning stack is up |
 | NAT repair | SSM on the NAT instance only (iptables) | $0 |
 | RDS from laptop | Optional SSM port-forward via a node (nodes already allow 3306) | $0 |
@@ -1106,6 +1106,16 @@ Five IAM Roles for Service Accounts, each with OIDC trust policy scoped to a spe
 | SSM / ECR / STS interface VPCEs | Not used (budget) | — |
 
 SSM does not work with the network stack alone (no instances, no NAT).
+
+### Operator IP (`my_ip`)
+
+Same habit as saas-ntier-lab. The laptop public IP changes every connection. **Do not** put it in `terraform.tfvars`. Pass it on every **workload** `plan` / `apply`:
+
+```bash
+-var="my_ip=$(curl -s https://checkip.amazonaws.com)/32"
+```
+
+`my_ip` has no default and must be `x.x.x.x/32`. That value is `public_access_cidrs` for the EKS API. After a reconnect, apply workload again with a fresh curl — do not open `0.0.0.0/0`. The Petclinic ALB stays 80/443 from the internet (unlike the saas lab HTTP ALB, which is also `/32`).
 
 ---
 
@@ -1133,7 +1143,7 @@ This is a learning project. Instance choices maximize AWS free tier eligibility.
 | **Total if left 24/7** | **~$80–87/mo** | **~$80–87/mo** | EKS control plane is the main cost |
 | **Total with destroy-after-session** | **~$6–10/mo** | do not run | Network ~$1 idle + EKS $0.10/hr while up |
 
-> **Students should destroy the learning stack after each session** (NAT, EKS, nodes, RDS, ALB) and keep the network stack. At $0.10/hr, running EKS for 10 hours/week = ~$4–5/month for the control plane (plus NAT ~$0.01/hr while up). Target: **entire course under $50 AWS spend.** Do not leave EKS overnight. Do not run prod for day-to-day learning.
+> **Destroy the learning stack after each session** (NAT, EKS, nodes, RDS, ALB) and keep the network stack. EKS has no stop: $0.10/hr for as long as the cluster exists. At 10 hours/week that is ~$4–5/month for the control plane (plus NAT ~$0.01/hr while up). Target: **entire course under $20 AWS spend** — a usage cap, not a 24/7 monthly bill. Do not leave EKS overnight. Do not run prod for day-to-day learning.
 
 Always-on network (VPC, subnets, IGW, S3 gateway) is ~$0 plus ~$1 state. NAT instance is **~$7/month only if left on** — it belongs in the destroyable stack. No NAT Gateway (~$38–76/month avoided). No interface VPCEs. SSM Session Manager is $0 (uses NAT to reach public SSM APIs during a session).
 
@@ -1305,6 +1315,7 @@ Uses `aws_ecr_repository` with lifecycle policies, scan-on-push, and configurabl
 | `backup_retention_period` | number | Backup retention in days | `7` |
 | `skip_final_snapshot` | bool | Skip final snapshot on delete | `true` |
 | `deletion_protection` | bool | Deletion protection | `false` |
+| `kms_key_id` | string | CMK for storage — `alias/petclinic-terraform-state` (same as state bucket) | — (required) |
 | `tags` | map(string) | Additional tags | `{}` |
 
 | Output | Type | Description |

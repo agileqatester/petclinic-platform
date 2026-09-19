@@ -23,7 +23,17 @@ petclinic-platform/
 └── docs/                         # technical-spec, jira-backlog, later runbooks
 ```
 
-Do not commit `terraform.tfvars`, `.env`, or kubeconfig. Use `*.tfvars.example` placeholders.
+Do not commit `terraform.tfvars`, `.env`, or kubeconfig. Use `*.tfvars.example` placeholders. Never put `my_ip` in tfvars.
+
+## Operator IP (EKS API)
+
+The laptop public IP changes every connection. Same as saas-ntier-lab: pass it on the CLI when you plan/apply the **learning** stack.
+
+```bash
+-var="my_ip=$(curl -s https://checkip.amazonaws.com)/32"
+```
+
+That CIDR is the EKS public API allow-list. Re-apply after you reconnect. Never `0.0.0.0/0`.
 
 ## Tech Stack
 
@@ -55,7 +65,7 @@ EKS extended support is $0.60/hour. Always pin a **standard-support** version.
 
 ## Cost habit
 
-EKS control plane is ~$73/month per cluster while it exists. Use `scripts/stop-env.sh {dev|prod}` between sessions, or destroy the environment. Target: entire course under $50 AWS spend.
+EKS control plane is $0.10/hour (~$73/month) **while the cluster exists** — there is no stop. Destroy the learning stack after each session (keep the VPC). Target: **entire course under $20**, which holds at ~10 hours/week if you never leave EKS overnight. One forgotten weekend is ~$5 of that $20.
 
 ## Cursor setup
 
