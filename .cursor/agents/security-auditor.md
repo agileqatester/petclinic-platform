@@ -18,7 +18,7 @@ When using the shell, ONLY run read-only commands (`checkov`, `kubectl apply --d
 
 ### 1. Secrets & Credentials
 - Hardcoded secrets, passwords, API keys, AWS account IDs used as if they were secrets
-- .gitignore covers *.tfvars, .env, *.pem, *.key, kubeconfig
+- .gitignore covers *.tfvars, *.tfvars.json, .env, *.pem, *.key, kubeconfig
 - Secrets flow: Secrets Manager → ExternalSecret v1 → K8s Secret → Pod
 - Sensitive outputs marked `sensitive = true`
 

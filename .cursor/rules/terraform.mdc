@@ -1,6 +1,6 @@
 ---
 description: Terraform module structure, naming, tags, and security for petclinic-platform
-globs: terraform/**/*.tf,terraform/**/*.tfvars,terraform/**/*.tfvars.example
+globs: terraform/**/*.tf,terraform/**/*.tfvars,terraform/**/*.tfvars.json,terraform/**/*.tfvars.example
 alwaysApply: false
 ---
 
@@ -16,7 +16,7 @@ Every module directory MUST contain:
 
 Environment root modules (`terraform/environments/{env}/network/` keep, `{env}/workload/` destroy) additionally have:
 - `backend.tf` — S3 backend configuration (SSE-S3 / AES256)
-- `terraform.tfvars.example` — placeholder values (commit this, never real `*.tfvars`)
+- `terraform.tfvars.example` — placeholder values (commit this, never real `*.tfvars` or `*.tfvars.json`)
 
 ## Naming
 

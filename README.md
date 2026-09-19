@@ -23,7 +23,7 @@ petclinic-platform/
 └── docs/                         # technical-spec, jira-backlog, later runbooks
 ```
 
-Do not commit `terraform.tfvars`, `.env`, or kubeconfig. Use `*.tfvars.example` placeholders. Never put `my_ip` in tfvars.
+Do not commit `terraform.tfvars`, `*.tfvars.json`, `.env`, or kubeconfig. Use `*.tfvars.example` placeholders. Never put `my_ip` in tfvars.
 
 ## Operator IP (EKS API)
 

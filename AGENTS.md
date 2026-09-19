@@ -98,7 +98,7 @@ Those Terraform / Helm / K8s / workflow paths are **story outputs**. They do not
 5. **Least privilege IAM** — specific actions on specific resources, never `*/*`
 6. **Private nodes and RDS** — public subnets only for ALB and the NAT instance (ADR-0001). Security groups stay mandatory. No SSH, no bastion; operator host debug is SSM Session Manager (nodes + NAT). No interface VPCEs.
 7. **No terraform destroy without approval** — hooks block this command
-8. **No *.tfvars or .env files committed** — .gitignore enforces this
+8. **No *.tfvars, *.tfvars.json, or .env files committed** — .gitignore enforces this
 9. **EKS API is never 0.0.0.0/0** — public endpoint is `my_ip` `/32` passed at apply (`-var="my_ip=$(curl -s https://checkip.amazonaws.com)/32"`). Never commit it. Re-apply workload when the laptop IP changes.
 10. **IMDSv2 required, hop limit 1** on node launch templates (blocks pod IMDS credential theft)
 11. **RDS is not publicly accessible** and sits in private subnets (no IGW route)
@@ -194,7 +194,7 @@ Enable these in Cursor Settings → MCP after cloning. They are inactive until t
 | `block-dangerous-rm.sh` | Block | `rm -rf` on terraform/, k8s/, helm/, helm-values/, .github/, .cursor/, docs/, scripts/ |
 | `warn-apply-without-plan.sh` | Ask | `terraform apply` without a saved plan.out file |
 | `suggest-validate.sh` | Info | Suggests validate/dry-run after editing .tf, K8s .yaml, Helm, or pipeline files |
-| `block-secret-commit.sh` | Block | `git add .`, committing .env, .tfvars, .pem, .key files |
+| `block-secret-commit.sh` | Block | `git add .`, committing .env, .tfvars, .tfvars.json, .pem, .key files |
 | `block-mcp-destroy.sh` | Block | `destroy` via MCP Terraform/Terragrunt tools |
 
 ## Technical Specification

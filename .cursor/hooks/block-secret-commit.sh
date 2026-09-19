@@ -34,7 +34,7 @@ Add files explicitly by name, e.g.:
 
   SECRET_FILE_PATTERNS=(
     '\.env($|[[:space:]]|/)'
-    '\.tfvars($|[[:space:]])'
+    '\.tfvars(\.json)?($|[[:space:]])'
     '\.pem($|[[:space:]])'
     '\.key($|[[:space:]])'
     '\.p12($|[[:space:]])'

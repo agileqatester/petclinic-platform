@@ -13,7 +13,9 @@ override.tf.json
 
 # Sensitive files — NEVER commit
 *.tfvars
+*.tfvars.json
 !*.tfvars.example
+!*.tfvars.json.example
 .env
 .env.*
 *.pem
