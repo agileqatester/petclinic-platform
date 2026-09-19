@@ -14,8 +14,8 @@ Every module directory MUST contain:
 - `outputs.tf` — exported values (IDs, ARNs, endpoints)
 - `versions.tf` — required_providers with Terraform `>= 1.6.0` and AWS provider `~> 6.0`
 
-Environment root modules (`terraform/environments/{env}/`) additionally have:
-- `backend.tf` — S3 backend configuration (SSE-KMS)
+Environment root modules (`terraform/environments/{env}/network/` keep, `{env}/workload/` destroy) additionally have:
+- `backend.tf` — S3 backend configuration (SSE-S3 / AES256)
 - `terraform.tfvars.example` — placeholder values (commit this, never real `*.tfvars`)
 
 ## Naming
@@ -41,7 +41,7 @@ Prefer `default_tags` on the AWS provider plus a module `tags` variable for serv
 - No inline credentials. RDS passwords go to Secrets Manager; mark outputs `sensitive = true`
 - Block public access on every S3 bucket
 - No wildcard IAM (`Action = "*"` + `Resource = "*"`)
-- Encrypt RDS and the state bucket with the **same** CMK `alias/petclinic-terraform-state` (do not add a second key)
+- Encrypt the state bucket with SSE-S3 (AES256); encrypt RDS with the AWS-managed `aws/rds` key (omit `kms_key_id`). Do not create a customer CMK (ADR-0012)
 - Security groups remain mandatory; nodes and RDS are in **private** subnets (ADR-0001)
 - EKS public API: `my_ip` `/32` at apply time, never `0.0.0.0/0`, never commit the IP
 - Node launch templates: IMDSv2 `http_tokens = required`, `http_put_response_hop_limit = 1`

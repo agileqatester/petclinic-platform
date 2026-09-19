@@ -28,8 +28,8 @@ Integrated terminals load this from `.vscode/settings.json`. MCP loads it from `
 ## Directory Layout
 
 ```
-terraform/environments/{dev,prod}/   # Root modules (one per environment)
-terraform/modules/{vpc,eks,ecr,rds,dns,secrets,observability,karpenter}/
+terraform/environments/{dev,prod}/{network,workload}/  # Keep VPC vs destroy NAT/EKS
+terraform/modules/{vpc,nat,eks,ecr,rds,dns,secrets,observability,karpenter}/
 helm/petclinic-service/              # Generic Helm chart (shared by all 8 services)
 helm-values/                         # Per-service YAML + per-env (dev.yaml, prod.yaml)
 k8s/base/                            # Namespaces, network policies, external-secrets CRs
@@ -48,7 +48,7 @@ Those Terraform / Helm / K8s / workflow paths are **story outputs**. They do not
 - **Provider:** AWS provider ~> 6.0, region eu-central-1
 - **Terraform:** >= 1.6.0
 - **ECR:** `aws_ecr_repository` in eu-central-1 with lifecycle policies, scan-on-push, and configurable tag immutability
-- **State:** S3 + DynamoDB locking, SSE-KMS with `alias/petclinic-terraform-state` (annual rotation). RDS uses **that same CMK** — do not create a second key. State key pattern `petclinic/{env}/terraform.tfstate` (split to `.../network/` and `.../workload/` when those roots exist).
+- **State:** S3 + DynamoDB locking, SSE-S3 (AES256). No customer CMK. RDS uses the AWS-managed `aws/rds` key (omit `kms_key_id`). Keys: `petclinic/{env}/network/terraform.tfstate` and `petclinic/{env}/workload/terraform.tfstate`.
 - **Modules:** All reusable modules in `terraform/modules/`. Environments call modules.
 - **Naming:** `petclinic-{env}-{resource}` (e.g., `petclinic-dev-vpc`, `petclinic-prod-eks`)
 - **Tagging:** Every resource MUST have tags: `Project=petclinic`, `Environment={dev|prod}`, `ManagedBy=terraform`
@@ -94,7 +94,7 @@ Those Terraform / Helm / K8s / workflow paths are **story outputs**. They do not
 1. **No secrets in code** — use AWS Secrets Manager + External Secrets Operator
 2. **No public S3 buckets** — block public access on all buckets
 3. **No open security groups** — no 0.0.0.0/0 ingress except ALB on 80/443
-4. **Encryption everywhere** — RDS encryption at rest, S3 SSE-KMS, EBS encryption, Secrets Manager KMS
+4. **Encryption everywhere** — RDS encryption at rest (AWS-managed `aws/rds`), S3 SSE-S3 (AES256), EBS encryption, Secrets Manager KMS
 5. **Least privilege IAM** — specific actions on specific resources, never `*/*`
 6. **Private nodes and RDS** — public subnets only for ALB and the NAT instance (ADR-0001). Security groups stay mandatory. No SSH, no bastion; operator host debug is SSM Session Manager (nodes + NAT). No interface VPCEs.
 7. **No terraform destroy without approval** — hooks block this command
@@ -112,7 +112,7 @@ Those Terraform / Helm / K8s / workflow paths are **story outputs**. They do not
 | K8s namespace | petclinic-dev | petclinic-prod |
 | Kubernetes | 1.35 (EKS standard support) | 1.35 (EKS standard support) |
 | Node AMI | AL2023_ARM_64_STANDARD | AL2023_ARM_64_STANDARD |
-| State key | petclinic/dev/terraform.tfstate | petclinic/prod/terraform.tfstate |
+| State key | `petclinic/dev/network/terraform.tfstate` + `petclinic/dev/workload/terraform.tfstate` | `petclinic/prod/network/terraform.tfstate` + `petclinic/prod/workload/terraform.tfstate` |
 | RDS instance | db.t4g.micro, MySQL 8.4, gp3, single-AZ | same size; deletion protection on |
 | EKS nodes | 2x t4g.small ARM | 2x t4g.small ARM |
 | Deploy mode | ArgoCD auto-sync | ArgoCD manual sync |

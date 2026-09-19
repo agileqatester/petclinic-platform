@@ -88,13 +88,13 @@ These tags are applied via `default_tags` in the AWS provider configuration. Mod
 
 ## Terraform State Backend
 
-**Implementation:** Implemented — `scripts/bootstrap-state.sh` (SSE-KMS CMK, versioning, public-access block, DynamoDB `LockID`) and `terraform/environments/{dev,prod}/backend.tf` with keys `petclinic/{env}/terraform.tfstate`.
+**Implementation:** Implemented — `scripts/bootstrap-state.sh` (SSE-S3 AES256, versioning, public-access block, DynamoDB `LockID`) and `terraform/environments/{dev,prod}/backend.tf` with keys `petclinic/{env}/terraform.tfstate`.
 
 | Parameter | Value |
 |-----------|-------|
 | Backend Type | S3 with DynamoDB locking |
 | S3 Bucket | `petclinic-terraform-state-{account-id}` |
-| S3 Encryption | SSE-KMS, **one** customer-managed CMK `alias/petclinic-terraform-state`, annual rotation, S3 Bucket Keys. Same key encrypts RDS (no second CMK). |
+| S3 Encryption | SSE-S3 (AES256). No customer CMK. Backend `encrypt = true` without `kms_key_id`. |
 | S3 Versioning | Enabled |
 | S3 Public Access | All blocked (4 settings) |
 | DynamoDB Table | `petclinic-terraform-locks` |
@@ -104,8 +104,10 @@ These tags are applied via `default_tags` in the AWS provider configuration. Mod
 
 | Environment | State Key | Purpose |
 |-------------|-----------|---------|
-| Dev | `petclinic/dev/terraform.tfstate` | Dev infrastructure state |
-| Prod | `petclinic/prod/terraform.tfstate` | Prod infrastructure state |
+| Dev | `petclinic/dev/network/terraform.tfstate` | Keep stack (VPC) |
+| Dev | `petclinic/dev/workload/terraform.tfstate` | Destroy stack (NAT; later EKS/RDS) |
+| Prod | `petclinic/prod/network/terraform.tfstate` | Keep stack (do not apply for day-to-day learning) |
+| Prod | `petclinic/prod/workload/terraform.tfstate` | Destroy stack |
 
 ### Bootstrap Script
 
@@ -118,13 +120,13 @@ These tags are applied via `default_tags` in the AWS provider configuration. Mod
 
 ## VPC Network Design
 
-**Implementation:** Not started — `terraform/modules/vpc/` is a placeholder (`PETPLAT-6`). Variable stubs exist; no VPC, subnets, or IGW.
+**Implementation:** Implemented — `terraform/modules/vpc/` (private subnets, S3 gateway, SGs). Called from `terraform/environments/{dev,prod}/network/`. NAT default route is in the workload root.
 
 ### Architecture Decision
 
 Private EKS nodes and RDS. Public subnets only for the internet-facing ALB and one `t4g.micro` NAT instance. S3 gateway endpoint (free). No NAT Gateway. No interface VPC endpoints. Security groups remain mandatory. See [ADR-0001](./adr/ADR-0001-private-nodes-nat-instance.md).
 
-**Budget habit (keep vs destroy):** network stack stays on (VPC, subnets, IGW, S3 gateway, SGs, route tables — ~$0 plus ~$1 state). Learning stack is destroyed after each session (NAT instance + EIP, EKS, nodes, RDS, ALB). Dev only for day-to-day learning. Operator access is kubectl (EKS API `/32`) plus SSM Session Manager on nodes and NAT — no SSH, no bastion, no SSM VPCEs.
+**Budget habit (keep vs destroy):** network stack stays on (VPC, subnets, IGW, S3 gateway, SGs, route tables — ~$0). Learning stack is destroyed after each session (NAT instance + EIP, EKS, nodes, RDS, ALB). Dev only for day-to-day learning. Operator access is kubectl (EKS API `/32`) plus SSM Session Manager on nodes and NAT — no SSH, no bastion, no SSM VPCEs.
 
 ### CIDR Allocation
 
@@ -383,7 +385,7 @@ ECR Private: 500 MB free tier, then $0.10/GB/month. With 8 services at ~200 MB e
 | Allocated Storage | 20 GB | 20 GB |
 | Max Allocated Storage (autoscaling) | 20 GB | 20 GB |
 | Storage Type | `gp3` | `gp3` |
-| Storage Encrypted | `true`, KMS key = `alias/petclinic-terraform-state` (same CMK as the state bucket) | same |
+| Storage Encrypted | `true`, AWS-managed `aws/rds` (omit `kms_key_id`) | same |
 | Publicly accessible | `false` (private subnets; no IGW route) | `false` (private subnets; no IGW route) |
 | Backup Retention | 7 days | 7 days |
 | Skip Final Snapshot | `true` | `false` |
@@ -392,7 +394,7 @@ ECR Private: 500 MB free tier, then $0.10/GB/month. With 8 services at ~200 MB e
 | Master Username | `petclinic` | `petclinic` |
 | Master Password | Generated via `random_password` | Generated via `random_password` |
 
-> **Cost note:** db.t4g.micro (2 vCPU, 1 GiB) is AWS RDS free tier eligible (750 hrs/month for 12 months, 20 GB storage). Both envs use identical sizing for learning. Storage encryption uses the **existing** state CMK (`alias/petclinic-terraform-state`) so RDS does not add a second $1/month key. In production you would use Multi-AZ, larger instance classes, 30-day backups, deletion protection, and a final snapshot.
+> **Cost note:** db.t4g.micro (2 vCPU, 1 GiB) is AWS RDS free tier eligible (750 hrs/month for 12 months, 20 GB storage). Both envs use identical sizing for learning. Storage encryption uses the AWS-managed `aws/rds` key (no $1/month CMK). In production you would use Multi-AZ, larger instance classes, 30-day backups, deletion protection, and a final snapshot.
 
 ### Parameter Group
 
@@ -1062,14 +1064,14 @@ Five IAM Roles for Service Accounts, each with OIDC trust policy scoped to a spe
 
 ## Security Controls
 
-**Implementation:** Partial — state-bucket SSE-KMS + HTTPS-only policy and gitignore/hooks for secrets. RDS/EBS/ECR encryption, NetworkPolicies, and Pod Security Admission are not started.
+**Implementation:** Partial — state-bucket SSE-S3 + HTTPS-only policy and gitignore/hooks for secrets. RDS/EBS/ECR encryption, NetworkPolicies, and Pod Security Admission are not started.
 
 ### Encryption Matrix
 
 | Resource | Encryption at Rest | Encryption in Transit | Key |
 |----------|-------------------|----------------------|-----|
-| RDS MySQL | KMS (`alias/petclinic-terraform-state`) | SSL available (not enforced by default) | Same CMK as state bucket |
-| S3 (state bucket) | SSE-KMS (`alias/petclinic-terraform-state`, rotation on) | HTTPS enforced | Same CMK as RDS |
+| RDS MySQL | KMS (AWS default `aws/rds` key) | SSL available (not enforced by default) | AWS managed |
+| S3 (state bucket) | SSE-S3 (AES256) | HTTPS enforced | AWS managed |
 | EBS Volumes | Default encryption enabled | N/A | AWS managed |
 | ECR Images | AES256 | HTTPS | AWS managed |
 | Secrets Manager | KMS (AWS default `aws/secretsmanager` key) | HTTPS | AWS managed |
@@ -1133,7 +1135,7 @@ This is a learning project. Instance choices maximize AWS free tier eligibility.
 | EC2 Nodes (2x t4g.small) | $0 | $0 | Graviton free trial (750 hrs/mo until Dec 2026) |
 | RDS MySQL (db.t4g.micro) | $0 | $0 | RDS free tier (750 hrs/mo, 12 months) |
 | ALB | $0 | $0 | Free tier (750 hrs/mo, 12 months) |
-| S3 + DynamoDB (state) | $1 | $1 | Mostly free tier |
+| S3 + DynamoDB (state) | ~$0 | ~$0 | SSE-S3 + PAY_PER_REQUEST; no CMK |
 | ECR Storage | ~$1 | ~$1 | 500 MB free, then $0.10/GB/month |
 | EBS (PVs — Prometheus, Grafana, Loki) | $2 | $2 | 30 GB gp3 |
 | Route 53 | $1 | $1 | $0.50/zone + queries |
@@ -1141,11 +1143,11 @@ This is a learning project. Instance choices maximize AWS free tier eligibility.
 | Data Transfer | $1 | $1 | 100 GB/mo free |
 | NAT instance (`t4g.micro`) | $0 session / ~$7 if left on | same | Destroy with EKS; not NAT Gateway |
 | **Total if left 24/7** | **~$80–87/mo** | **~$80–87/mo** | EKS control plane is the main cost |
-| **Total with destroy-after-session** | **~$6–10/mo** | do not run | Network ~$1 idle + EKS $0.10/hr while up |
+| **Total with destroy-after-session** | **~$5–9/mo** | do not run | Network ~$0 idle + EKS $0.10/hr while up |
 
 > **Destroy the learning stack after each session** (NAT, EKS, nodes, RDS, ALB) and keep the network stack. EKS has no stop: $0.10/hr for as long as the cluster exists. At 10 hours/week that is ~$4–5/month for the control plane (plus NAT ~$0.01/hr while up). Target: **entire course under $20 AWS spend** — a usage cap, not a 24/7 monthly bill. Do not leave EKS overnight. Do not run prod for day-to-day learning.
 
-Always-on network (VPC, subnets, IGW, S3 gateway) is ~$0 plus ~$1 state. NAT instance is **~$7/month only if left on** — it belongs in the destroyable stack. No NAT Gateway (~$38–76/month avoided). No interface VPCEs. SSM Session Manager is $0 (uses NAT to reach public SSM APIs during a session).
+Always-on network (VPC, subnets, IGW, S3 gateway) is ~$0. NAT instance is **~$7/month only if left on** — it belongs in the destroyable stack. No NAT Gateway (~$38–76/month avoided). No interface VPCEs. SSM Session Manager is $0 (uses NAT to reach public SSM APIs during a session). No customer KMS CMK (ADR-0012).
 
 ### Spot Instance Configuration (Dev — Optional)
 
@@ -1217,7 +1219,7 @@ Always-on network (VPC, subnets, IGW, S3 gateway) is ~$0 plus ~$1 state. NAT ins
 
 ## Terraform Modules
 
-**Implementation:** Partial — `terraform/modules/{vpc,eks,ecr,rds,dns,secrets,observability}/` exist with `variables.tf` stubs and empty `main.tf`. No module is called from an environment root. No `karpenter` module directory yet.
+**Implementation:** Slice 1 done for `vpc` and `nat`. Environment roots are `{dev,prod}/{network,workload}/`. `eks`, `ecr`, `rds`, `dns`, `secrets`, `observability` remain stubs. No `karpenter` module yet.
 
 ### Module: `vpc`
 
@@ -1238,10 +1240,37 @@ Always-on network (VPC, subnets, IGW, S3 gateway) is ~$0 plus ~$1 state. NAT ins
 | `vpc_id` | string | VPC ID |
 | `public_subnet_ids` | list(string) | Public subnet IDs (ALB, NAT instance) |
 | `private_subnet_ids` | list(string) | Private subnet IDs (nodes, RDS) |
+| `private_route_table_ids` | list(string) | Private route tables (workload adds NAT `0.0.0.0/0`) |
+| `vpc_cidr` | string | VPC CIDR |
 | `eks_cluster_sg_id` | string | EKS cluster security group ID |
 | `eks_node_sg_id` | string | EKS node security group ID |
 | `rds_sg_id` | string | RDS security group ID |
 | `alb_sg_id` | string | ALB security group ID |
+
+### Module: `nat`
+
+**Path:** `terraform/modules/nat/`
+
+Destroyable learning stack. Single `t4g.micro` NAT instance (no NAT Gateway). Called from `terraform/environments/{env}/workload/`.
+
+| Input Variable | Type | Description | Default |
+|---------------|------|-------------|---------|
+| `project` | string | Project name | `"petclinic"` |
+| `environment` | string | Environment | — |
+| `vpc_id` | string | VPC ID | — |
+| `vpc_cidr` | string | CIDR allowed to NAT (no SSH) | — |
+| `public_subnet_ids` | list(string) | Public subnets; instance in index 0 | — |
+| `instance_type` | string | NAT instance type | `"t4g.micro"` |
+| `enable_ssm` | bool | SSM instance profile | `true` |
+| `ami_id` | string | Optional AL2023 ARM AMI | `""` |
+| `tags` | map(string) | Additional tags | `{}` |
+
+| Output | Type | Description |
+|--------|------|-------------|
+| `instance_id` | string | NAT instance ID |
+| `network_interface_id` | string | Primary ENI for private default routes |
+| `security_group_id` | string | NAT SG |
+| `public_ip` | string | Elastic IP |
 
 ### Module: `eks`
 
@@ -1315,7 +1344,7 @@ Uses `aws_ecr_repository` with lifecycle policies, scan-on-push, and configurabl
 | `backup_retention_period` | number | Backup retention in days | `7` |
 | `skip_final_snapshot` | bool | Skip final snapshot on delete | `true` |
 | `deletion_protection` | bool | Deletion protection | `false` |
-| `kms_key_id` | string | CMK for storage — `alias/petclinic-terraform-state` (same as state bucket) | — (required) |
+| `kms_key_id` | string | Omit so RDS uses AWS-managed `aws/rds`. Do not create a customer CMK. | `null` |
 | `tags` | map(string) | Additional tags | `{}` |
 
 | Output | Type | Description |
@@ -1656,9 +1685,9 @@ spec:
 
 ## ADR Index
 
-**Implementation:** Partial — decisions are recorded in this table. ADR-0001 is in `docs/adr/`; other `docs/adr/` files are not written yet (E-15).
+**Implementation:** Partial — decisions are recorded in this table. ADR-0001 and ADR-0012 are in `docs/adr/`; other `docs/adr/` files are not written yet (E-15).
 
-Architecture Decision Records are stored in `docs/adr/`. ADR-0001 is written; remaining rows are still index-only until E-15.
+Architecture Decision Records are stored in `docs/adr/`. ADR-0001 and ADR-0012 are written; remaining rows are still index-only until E-15.
 
 | ADR | Title | Status | Summary |
 |-----|-------|--------|---------|
@@ -1673,3 +1702,4 @@ Architecture Decision Records are stored in `docs/adr/`. ADR-0001 is written; re
 | ADR-0009 | Karpenter over Cluster Autoscaler | Accepted | Faster node provisioning, better Spot diversification, EC2 Fleet API. Industry trend replacing CAS. Trade-off: more complex IAM setup. |
 | ADR-0010 | ECR Private (production-correct pattern) | Accepted | Private ECR teaches the production pattern: IAM-controlled access, lifecycle policies, scan-on-push, tag immutability. Cost: ~$1/month — negligible. |
 | ADR-0011 | Secrets Manager for secrets storage | Accepted | Industry-standard secrets management ($0.40/secret/month, ~$1.20 total). Built-in rotation capability, fine-grained IAM. Teaches students the production-grade approach. |
+| ADR-0012 | AWS-managed encryption for state and RDS | Accepted | State bucket SSE-S3 (AES256). RDS uses `aws/rds`. No customer CMK. Drops ~$1/month. |
