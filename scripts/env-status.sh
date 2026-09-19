@@ -2,25 +2,16 @@
 set -euo pipefail
 
 #
-# env-status.sh — Check the current state of your AWS environment
-#
-# Shows whether EKS nodes and RDS are running, stopped, or missing.
-# Useful before starting/stopping to know current state.
-#
-# Usage:
-#   ./scripts/env-status.sh dev
-#   ./scripts/env-status.sh prod
+# env-status.sh — Show keep (network) vs destroy (workload) stacks.
 #
 
-REGION="${AWS_DEFAULT_REGION:-eu-central-1}"
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+export AWS_PROFILE="${AWS_PROFILE:-petclinic}"
+export AWS_DEFAULT_REGION="${AWS_DEFAULT_REGION:-eu-central-1}"
 
 usage() {
   echo "Usage: $0 <environment>"
   echo "  environment: dev | prod"
-  echo ""
-  echo "Examples:"
-  echo "  $0 dev      # Check dev environment status"
-  echo "  $0 prod     # Check prod environment status"
   exit 1
 }
 
@@ -29,161 +20,53 @@ if [[ $# -ne 1 ]]; then
 fi
 
 ENV="$1"
-if [[ "$ENV" != "dev" && "$ENV" != "prod" ]]; then
+if [[ "${ENV}" != "dev" && "${ENV}" != "prod" ]]; then
   echo "Error: environment must be 'dev' or 'prod'"
   usage
 fi
 
-CLUSTER_NAME="petclinic-${ENV}"
-NODEGROUP_NAME="petclinic-${ENV}-nodes"
-RDS_INSTANCE_ID="petclinic-${ENV}-mysql"
-
 echo "============================================"
 echo "  Environment Status: ${ENV}"
-echo "  Region: ${REGION}"
+echo "  Profile: ${AWS_PROFILE}  Region: ${AWS_DEFAULT_REGION}"
 echo "============================================"
 echo ""
 
-# --- EKS Cluster ---
-echo "--- EKS Cluster: ${CLUSTER_NAME} ---"
+vpc_id="$(aws ec2 describe-vpcs \
+  --filters "Name=tag:Name,Values=petclinic-${ENV}-vpc" \
+  --query 'Vpcs[0].VpcId' \
+  --output text 2>/dev/null || echo "None")"
 
-CLUSTER_STATUS=$(aws eks describe-cluster \
-  --name "${CLUSTER_NAME}" \
-  --region "${REGION}" \
+if [[ "${vpc_id}" == "None" || "${vpc_id}" == "None" || -z "${vpc_id}" || "${vpc_id}" == "null" ]]; then
+  echo "Network (keep): VPC not found"
+else
+  echo "Network (keep): VPC ${vpc_id}"
+fi
+
+nat_id="$(aws ec2 describe-instances \
+  --filters "Name=tag:Name,Values=petclinic-${ENV}-nat" "Name=instance-state-name,Values=pending,running,stopping,stopped" \
+  --query 'Reservations[0].Instances[0].InstanceId' \
+  --output text 2>/dev/null || echo "None")"
+
+if [[ "${nat_id}" == "None" || -z "${nat_id}" || "${nat_id}" == "null" ]]; then
+  echo "Workload (destroy): NAT instance not found"
+else
+  nat_state="$(aws ec2 describe-instances \
+    --instance-ids "${nat_id}" \
+    --query 'Reservations[0].Instances[0].State.Name' \
+    --output text)"
+  echo "Workload (destroy): NAT ${nat_id} (${nat_state}) — billed while running"
+fi
+
+cluster_status="$(aws eks describe-cluster \
+  --name "petclinic-${ENV}" \
   --query 'cluster.status' \
-  --output text 2>/dev/null || echo "NOT FOUND")
-
-echo "  Cluster status: ${CLUSTER_STATUS}"
-
-if [[ "${CLUSTER_STATUS}" != "NOT FOUND" ]]; then
-  CLUSTER_VERSION=$(aws eks describe-cluster \
-    --name "${CLUSTER_NAME}" \
-    --region "${REGION}" \
-    --query 'cluster.version' \
-    --output text)
-  echo "  Kubernetes version: ${CLUSTER_VERSION}"
+  --output text 2>/dev/null || echo "NOT FOUND")"
+echo "EKS cluster: ${cluster_status}"
+if [[ "${cluster_status}" != "NOT FOUND" ]]; then
+  echo "  ** EKS bills \$0.10/hour while this exists. Destroy the workload stack. **"
 fi
 
 echo ""
-
-# --- EKS Node Group ---
-echo "--- Node Group: ${NODEGROUP_NAME} ---"
-
-NODEGROUP_STATUS=$(aws eks describe-nodegroup \
-  --cluster-name "${CLUSTER_NAME}" \
-  --nodegroup-name "${NODEGROUP_NAME}" \
-  --region "${REGION}" \
-  --query 'nodegroup.status' \
-  --output text 2>/dev/null || echo "NOT FOUND")
-
-if [[ "${NODEGROUP_STATUS}" == "NOT FOUND" ]]; then
-  echo "  Status: NOT FOUND"
-else
-  echo "  Status: ${NODEGROUP_STATUS}"
-
-  SCALING_INFO=$(aws eks describe-nodegroup \
-    --cluster-name "${CLUSTER_NAME}" \
-    --nodegroup-name "${NODEGROUP_NAME}" \
-    --region "${REGION}" \
-    --query 'nodegroup.scalingConfig.{min:minSize,max:maxSize,desired:desiredSize}' \
-    --output text)
-
-  DESIRED=$(echo "${SCALING_INFO}" | awk '{print $1}')
-  MAX=$(echo "${SCALING_INFO}" | awk '{print $2}')
-  MIN=$(echo "${SCALING_INFO}" | awk '{print $3}')
-
-  echo "  Nodes: desired=${DESIRED}, min=${MIN}, max=${MAX}"
-
-  INSTANCE_TYPE=$(aws eks describe-nodegroup \
-    --cluster-name "${CLUSTER_NAME}" \
-    --nodegroup-name "${NODEGROUP_NAME}" \
-    --region "${REGION}" \
-    --query 'nodegroup.instanceTypes[0]' \
-    --output text)
-  echo "  Instance type: ${INSTANCE_TYPE}"
-
-  if [[ "${DESIRED}" == "0" ]]; then
-    echo "  ** PAUSED (scaled to 0) — no compute costs **"
-  fi
-fi
-
-echo ""
-
-# --- RDS Instance ---
-echo "--- RDS Instance: ${RDS_INSTANCE_ID} ---"
-
-RDS_STATUS=$(aws rds describe-db-instances \
-  --db-instance-identifier "${RDS_INSTANCE_ID}" \
-  --region "${REGION}" \
-  --query 'DBInstances[0].DBInstanceStatus' \
-  --output text 2>/dev/null || echo "NOT FOUND")
-
-if [[ "${RDS_STATUS}" == "NOT FOUND" ]]; then
-  echo "  Status: NOT FOUND"
-else
-  echo "  Status: ${RDS_STATUS}"
-
-  RDS_CLASS=$(aws rds describe-db-instances \
-    --db-instance-identifier "${RDS_INSTANCE_ID}" \
-    --region "${REGION}" \
-    --query 'DBInstances[0].DBInstanceClass' \
-    --output text)
-  echo "  Instance class: ${RDS_CLASS}"
-
-  RDS_ENGINE=$(aws rds describe-db-instances \
-    --db-instance-identifier "${RDS_INSTANCE_ID}" \
-    --region "${REGION}" \
-    --query 'DBInstances[0].EngineVersion' \
-    --output text)
-  echo "  MySQL version: ${RDS_ENGINE}"
-
-  if [[ "${RDS_STATUS}" == "stopped" ]]; then
-    echo "  ** STOPPED — no compute costs **"
-    echo "  Note: AWS auto-restarts stopped RDS after 7 days."
-  fi
-fi
-
-echo ""
-
-# --- Cost Estimate ---
-echo "--- Estimated Daily Cost ---"
-
-RUNNING_COST=0
-PAUSED_ITEMS=""
-
-# EKS control plane always costs
-echo "  EKS control plane:  ~\$3.30/day (always on)"
-RUNNING_COST=3.30
-
-if [[ "${NODEGROUP_STATUS}" != "NOT FOUND" && "${DESIRED}" != "0" ]]; then
-  echo "  EC2 nodes (${DESIRED}x ${INSTANCE_TYPE}): ~\$2-5/day"
-  RUNNING_COST=$(echo "$RUNNING_COST + 3.5" | bc 2>/dev/null || echo "$RUNNING_COST")
-else
-  PAUSED_ITEMS="${PAUSED_ITEMS}  EC2 nodes: \$0 (scaled to 0)\n"
-fi
-
-if [[ "${RDS_STATUS}" == "available" ]]; then
-  echo "  RDS (${RDS_CLASS}):  ~\$1-2/day"
-  RUNNING_COST=$(echo "$RUNNING_COST + 1.5" | bc 2>/dev/null || echo "$RUNNING_COST")
-elif [[ "${RDS_STATUS}" == "stopped" ]]; then
-  PAUSED_ITEMS="${PAUSED_ITEMS}  RDS: \$0 (stopped)\n"
-fi
-
-if [[ -n "${PAUSED_ITEMS}" ]]; then
-  echo ""
-  echo "  Paused (no charge):"
-  echo -e "${PAUSED_ITEMS}"
-fi
-
-echo ""
-echo "============================================"
-if [[ "${DESIRED:-0}" == "0" && "${RDS_STATUS}" == "stopped" ]]; then
-  echo "  Environment is PAUSED. Only EKS control plane costs apply."
-  echo "  Run: ./scripts/start-env.sh ${ENV}"
-elif [[ "${DESIRED:-0}" == "0" || "${RDS_STATUS}" == "stopped" ]]; then
-  echo "  Environment is PARTIALLY running."
-else
-  echo "  Environment is FULLY running."
-  echo "  Run: ./scripts/stop-env.sh ${ENV}  (when done for the day)"
-fi
+echo "Keep:   terraform/environments/${ENV}/network"
+echo "Destroy after session: terraform/environments/${ENV}/workload"
 echo "============================================"

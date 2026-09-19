@@ -1,0 +1,7 @@
+aws_region  = "eu-central-1"
+environment = "prod"
+
+nat_instance_type = "t4g.micro"
+
+# Do not put my_ip here. When EKS is added, pass it at apply:
+#   -var="my_ip=$(curl -s https://checkip.amazonaws.com)/32"

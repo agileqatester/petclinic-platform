@@ -15,12 +15,17 @@ variable "vpc_cidr" {
 }
 
 variable "public_subnet_cidrs" {
-  description = "Public subnet CIDRs"
+  description = "Public subnet CIDRs (ALB, NAT instance)"
+  type        = list(string)
+}
+
+variable "private_subnet_cidrs" {
+  description = "Private subnet CIDRs (EKS nodes, RDS)"
   type        = list(string)
 }
 
 variable "availability_zones" {
-  description = "AZs for subnets"
+  description = "AZs for subnets (must match subnet CIDR list lengths)"
   type        = list(string)
 }
 

@@ -11,7 +11,7 @@ variable "environment" {
 
   validation {
     condition     = var.environment == "prod"
-    error_message = "terraform/environments/prod only accepts environment = \"prod\"."
+    error_message = "terraform/environments/prod/workload only accepts environment = \"prod\"."
   }
 }
 
@@ -25,4 +25,10 @@ variable "aws_account_id" {
   description = "AWS account this environment is allowed to target"
   type        = string
   default     = "833123247984"
+}
+
+variable "nat_instance_type" {
+  description = "NAT instance type"
+  type        = string
+  default     = "t4g.micro"
 }

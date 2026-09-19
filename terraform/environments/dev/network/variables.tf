@@ -11,7 +11,7 @@ variable "environment" {
 
   validation {
     condition     = var.environment == "dev"
-    error_message = "terraform/environments/dev only accepts environment = \"dev\"."
+    error_message = "terraform/environments/dev/network only accepts environment = \"dev\"."
   }
 }
 
@@ -25,4 +25,24 @@ variable "aws_account_id" {
   description = "AWS account this environment is allowed to target"
   type        = string
   default     = "833123247984"
+}
+
+variable "vpc_cidr" {
+  description = "VPC CIDR block"
+  type        = string
+}
+
+variable "public_subnet_cidrs" {
+  description = "Public subnet CIDRs (ALB, NAT instance)"
+  type        = list(string)
+}
+
+variable "private_subnet_cidrs" {
+  description = "Private subnet CIDRs (EKS nodes, RDS)"
+  type        = list(string)
+}
+
+variable "availability_zones" {
+  description = "AZs for subnets"
+  type        = list(string)
 }
