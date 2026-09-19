@@ -1,0 +1,24 @@
+---
+description: Human approval gate after every AI-SDLC stage. Always apply.
+alwaysApply: true
+---
+
+# Human gates
+
+The user is the gate at **every** stage. Do not chain stages in one turn.
+
+After each stage, stop and wait for an explicit proceed (e.g. "accept", "implement", "review", "plan", "apply").
+
+Never skip ahead: no Terraform in an architecture turn; no `terraform apply` in an implement turn; no commit unless they ask.
+
+Stages (stop after each):
+
+1. Intent / constraints
+2. Architecture (ADR) — architect agent
+3. Implementation plan (files to touch, no edits yet)
+4. Implementation (code only)
+5. Review (terraform-reviewer / security-auditor / cost-reviewer)
+6. `terraform plan` (terraform-plan skill)
+7. `terraform apply` (they confirm; hook also asks)
+
+If unsure whether they approved, ask. Do not infer yes from silence.

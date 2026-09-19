@@ -3,6 +3,22 @@
 This repo contains ALL infrastructure code for deploying Spring Petclinic Microservices to AWS.
 The application repo (spring-petclinic-microservices) is READ-ONLY — never modify it.
 
+How we use agents vs the frozen spec: [`docs/ai-sdlc.md`](docs/ai-sdlc.md). Open `petclinic.code-workspace` so sibling knowledge folders are in the window.
+
+## Knowledge bases (read-only, not copied)
+
+These are **sibling clones** (`../` from this repo). Never write, commit, or copy them into petclinic.
+
+| Local folder | What to read |
+|--------------|----------------|
+| `../aidlc-workflows` | AWS AI-DLC. Architect: `core/agents/aidlc-architect-agent.md`. Guide: `docs/guide/`. Do not run the Cursor installer into this repo. |
+| `../saas-ntier-lab` | Private EKS nodes, `t4g.micro` NAT instance (`modules/nat/`), S3 gateway endpoint. Preferred network pattern vs all-public IGW when it fits the budget. |
+| `../ntier-app` | Private lab and interview docs. Same family as saas. Never commit its content here. |
+
+In chat, `@aidlc-workflows` / `@saas-ntier-lab` after the workspace is open. `docs/technical-spec.md` is the course contract; an **accepted ADR** may override it (e.g. NAT instance). Until then, implementers follow the spec.
+
+**Human gates:** you approve every stage (architecture → plan → code → review → terraform plan → apply). See `docs/ai-sdlc.md` and `.cursor/rules/human-gates.mdc`. Do not chain stages unless the user explicitly proceeds.
+
 ## AWS CLI
 
 Use profile `petclinic` (`eu-central-1`). Never use `default` (us-east-1) in this repo.

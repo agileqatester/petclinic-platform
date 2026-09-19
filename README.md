@@ -59,7 +59,7 @@ EKS control plane is ~$73/month per cluster while it exists. Use `scripts/stop-e
 
 ## Cursor setup
 
-1. Open this folder in Cursor and trust the workspace.
-2. Enable project MCP servers from `.cursor/mcp.json` (Settings → MCP).
-3. Confirm hooks appear under Settings → Hooks.
-4. Implement stories in epic order: E-0 is done in-tree; start E-1 (remote state) next.
+1. Prefer **File → Open Workspace from File…** → `petclinic.code-workspace` (adds AI-DLC + lab clones as read-only knowledge). Or open this folder alone.
+2. Trust the workspace. Enable project MCP from `.cursor/mcp.json` (Settings → MCP).
+3. Confirm hooks under Settings → Hooks.
+4. Read [`docs/ai-sdlc.md`](docs/ai-sdlc.md) for architect → implementer → reviewer. Spec/backlog remain the course crossword unless you accept an ADR.

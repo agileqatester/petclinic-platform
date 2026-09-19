@@ -1,0 +1,30 @@
+{
+  "folders": [
+    {
+      "name": "petclinic-platform",
+      "path": "."
+    },
+    {
+      "name": "aidlc-workflows",
+      "path": "../aidlc-workflows"
+    },
+    {
+      "name": "saas-ntier-lab",
+      "path": "../saas-ntier-lab"
+    },
+    {
+      "name": "ntier-app",
+      "path": "../ntier-app"
+    }
+  ],
+  "settings": {
+    "search.exclude": {
+      "**/.terraform": true,
+      "**/*.tfstate": true,
+      "**/*.tfstate.backup": true,
+      "**/node_modules": true,
+      "**/.venv": true,
+      "**/.venv-tests": true
+    }
+  }
+}

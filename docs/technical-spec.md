@@ -3,38 +3,51 @@
 > **Purpose:** Single source of truth for all infrastructure values. Jira stories reference sections of this document via anchor links. Read the relevant section before implementing any story.
 >
 > **Convention:** Dev environment is built during the course. Prod values are defined here but implementation is a **student assignment** unless noted otherwise.
+>
+> **Last Updated:** 2026-09-19
+>
+> **Implementation tags** (this clone, code in git — not a live AWS inventory):
+> - **Implemented** — matching code exists and is wired (bootstrap/state also exists in AWS if `scripts/bootstrap-state.sh` was run)
+> - **Partial** — skeleton, pins, or a subset only
+> - **Not started** — spec only (placeholders at most)
 
 ---
 
 ## Table of Contents
 
-1. [General Project Parameters](#general-project-parameters)
-2. [Terraform State Backend](#terraform-state-backend)
-3. [VPC Network Design](#vpc-network-design)
-4. [Security Groups](#security-groups)
-5. [EKS Cluster](#eks-cluster)
-6. [ECR Container Registry](#ecr-container-registry)
-7. [RDS Database](#rds-database)
-8. [Secrets Management](#secrets-management)
-9. [DNS and Ingress](#dns-and-ingress)
-10. [Application Services](#application-services)
-11. [Kubernetes Manifests](#kubernetes-manifests)
-12. [Kubernetes Overlays](#kubernetes-overlays)
-13. [CI/CD Pipeline](#cicd-pipeline)
-14. [Observability](#observability)
-15. [IRSA Roles](#irsa-roles)
-16. [Security Controls](#security-controls)
-17. [Scaling and Cost](#scaling-and-cost)
-18. [Docker Build](#docker-build)
-19. [Terraform Modules](#terraform-modules)
-20. [Helm Charts](#helm-charts)
-21. [GitOps with ArgoCD](#gitops-with-argocd)
-22. [Karpenter (Node Autoscaling)](#karpenter-node-autoscaling)
-23. [ADR Index](#adr-index)
+| # | Section | Status |
+|---|---------|--------|
+| 1 | [General Project Parameters](#general-project-parameters) | Partial |
+| 2 | [Terraform State Backend](#terraform-state-backend) | Implemented |
+| 3 | [VPC Network Design](#vpc-network-design) | Not started |
+| 4 | [Security Groups](#security-groups) | Not started |
+| 5 | [EKS Cluster](#eks-cluster) | Not started |
+| 6 | [ECR Container Registry](#ecr-container-registry) | Not started |
+| 7 | [RDS Database](#rds-database) | Not started |
+| 8 | [Secrets Management](#secrets-management) | Not started |
+| 9 | [DNS and Ingress](#dns-and-ingress) | Not started |
+| 10 | [Application Services](#application-services) | Not started |
+| 11 | [Kubernetes Manifests](#kubernetes-manifests) | Not started |
+| 12 | [Kubernetes Overlays](#kubernetes-overlays) | Not started |
+| 13 | [CI/CD Pipeline](#cicd-pipeline) | Not started |
+| 14 | [Observability](#observability) | Not started |
+| 15 | [IRSA Roles](#irsa-roles) | Not started |
+| 16 | [Security Controls](#security-controls) | Partial |
+| 17 | [Scaling and Cost](#scaling-and-cost) | Not started |
+| 18 | [Docker Build](#docker-build) | Not started |
+| 19 | [Terraform Modules](#terraform-modules) | Partial |
+| 20 | [Helm Charts](#helm-charts) | Not started |
+| 21 | [GitOps with ArgoCD](#gitops-with-argocd) | Not started |
+| 22 | [Karpenter (Node Autoscaling)](#karpenter-node-autoscaling) | Not started |
+| 23 | [ADR Index](#adr-index) | Partial |
+
+Cursor setup (`AGENTS.md`, `.cursor/`) is implemented (E-0) but is not a numbered spec section.
 
 ---
 
 ## General Project Parameters
+
+**Implementation:** Partial — `eu-central-1`, Terraform `>= 1.6.0`, AWS provider `~> 6.0`, naming, and `default_tags` are set in `terraform/environments/{dev,prod}/`. EKS 1.35, RDS MySQL 8.4, and Spring versions are still spec-only.
 
 | Parameter | Value |
 |-----------|-------|
@@ -75,6 +88,8 @@ These tags are applied via `default_tags` in the AWS provider configuration. Mod
 
 ## Terraform State Backend
 
+**Implementation:** Implemented — `scripts/bootstrap-state.sh` (SSE-KMS CMK, versioning, public-access block, DynamoDB `LockID`) and `terraform/environments/{dev,prod}/backend.tf` with keys `petclinic/{env}/terraform.tfstate`.
+
 | Parameter | Value |
 |-----------|-------|
 | Backend Type | S3 with DynamoDB locking |
@@ -102,6 +117,8 @@ These tags are applied via `default_tags` in the AWS provider configuration. Mod
 ---
 
 ## VPC Network Design
+
+**Implementation:** Not started — `terraform/modules/vpc/` is a placeholder (`PETPLAT-6`). Variable stubs exist; no VPC, subnets, or IGW.
 
 ### Architecture Decision
 
@@ -146,6 +163,8 @@ CIDRs are non-overlapping to allow future VPC peering if needed.
 
 ## Security Groups
 
+**Implementation:** Not started — no `aws_security_group` resources (`PETPLAT-8`).
+
 Four security groups per environment. Security groups are the **primary access control boundary** in this all-public design.
 
 ### EKS Cluster Security Group
@@ -186,6 +205,8 @@ Four security groups per environment. Security groups are the **primary access c
 ---
 
 ## EKS Cluster
+
+**Implementation:** Not started — `terraform/modules/eks/` is a placeholder (`PETPLAT-12`, `PETPLAT-13`).
 
 ### Cluster Configuration
 
@@ -263,6 +284,8 @@ Disk type: `gp3`, encrypted. Do not rely on node-group `disk_size` alone if the 
 
 ## ECR Container Registry
 
+**Implementation:** Not started — `terraform/modules/ecr/` is a placeholder (`PETPLAT-18`, `PETPLAT-19`).
+
 ### Repository Configuration
 
 | Parameter | Dev | Prod |
@@ -331,6 +354,8 @@ ECR Private: 500 MB free tier, then $0.10/GB/month. With 8 services at ~200 MB e
 ---
 
 ## RDS Database
+
+**Implementation:** Not started — `terraform/modules/rds/` is a placeholder (`PETPLAT-22`, `PETPLAT-23`).
 
 ### Instance Configuration
 
@@ -410,6 +435,8 @@ Example: `jdbc:mysql://petclinic-dev-mysql.abc123.eu-central-1.rds.amazonaws.com
 
 ## Secrets Management
 
+**Implementation:** Not started — `terraform/modules/secrets/` is a placeholder (`PETPLAT-37`). No External Secrets Operator.
+
 ### Why AWS Secrets Manager
 
 AWS Secrets Manager is purpose-built for storing secrets (database credentials, API keys). It provides built-in rotation, cross-account access, and fine-grained IAM policies. At $0.40/secret/month (~$1.20/month for 3 secrets), the cost is minimal and teaches students the industry-standard approach.
@@ -484,6 +511,8 @@ spec:
 
 ## DNS and Ingress
 
+**Implementation:** Not started — `terraform/modules/dns/` is a placeholder. No ALB controller or Ingress.
+
 ### ACM Certificate
 
 | Parameter | Value |
@@ -540,6 +569,8 @@ All routing to backend services is handled by the API Gateway (Spring Cloud Gate
 ---
 
 ## Application Services
+
+**Implementation:** Not started — application repo is read-only; no Helm values or cluster workloads yet.
 
 ### Service Inventory
 
@@ -603,6 +634,8 @@ The API Gateway also serves an **AngularJS frontend** (static files: AngularJS 1
 ---
 
 ## Kubernetes Manifests
+
+**Implementation:** Not started — no `k8s/` tree.
 
 ### Namespaces
 
@@ -721,6 +754,8 @@ Each service directory contains:
 
 ## Kubernetes Overlays
 
+**Implementation:** Not started — no overlay/Helm env values yet.
+
 ### Dev Overlay (`k8s/overlays/dev/`)
 
 | Parameter | Value |
@@ -786,6 +821,8 @@ Environment-specific configuration is managed via Helm values files in `helm-val
 ---
 
 ## CI/CD Pipeline
+
+**Implementation:** Not started — no `.github/workflows/`.
 
 ### Architecture: CI + GitOps
 
@@ -866,6 +903,8 @@ git push
 ---
 
 ## Observability
+
+**Implementation:** Not started — `terraform/modules/observability/` is an empty placeholder.
 
 ### Prometheus
 
@@ -968,6 +1007,8 @@ Loki receives logs from FluentBit and exposes them as a Grafana datasource. Log-
 
 ## IRSA Roles
 
+**Implementation:** Not started.
+
 Five IAM Roles for Service Accounts, each with OIDC trust policy scoped to a specific Kubernetes ServiceAccount. FluentBit no longer requires an IRSA role — it sends logs to Loki in-cluster.
 
 | Role Name Pattern | K8s ServiceAccount | Namespace | IAM Policy | Used By |
@@ -1003,6 +1044,8 @@ Five IAM Roles for Service Accounts, each with OIDC trust policy scoped to a spe
 
 ## Security Controls
 
+**Implementation:** Partial — state-bucket SSE-KMS + HTTPS-only policy and gitignore/hooks for secrets. RDS/EBS/ECR encryption, NetworkPolicies, and Pod Security Admission are not started.
+
 ### Encryption Matrix
 
 | Resource | Encryption at Rest | Encryption in Transit | Key |
@@ -1036,6 +1079,8 @@ Five IAM Roles for Service Accounts, each with OIDC trust policy scoped to a spe
 ---
 
 ## Scaling and Cost
+
+**Implementation:** Not started — cost table is documentation only. `scripts/start-env.sh` / `stop-env.sh` exist but target EKS/RDS that are not deployed. No budgets or Karpenter.
 
 ### Monthly Cost Estimate (Free Tier Optimized)
 
@@ -1080,6 +1125,8 @@ No NAT Gateway cost ($0 saved vs ~$35-65/mo with NAT).
 ---
 
 ## Docker Build
+
+**Implementation:** Not started — no CI image build.
 
 ### Build Command
 
@@ -1126,6 +1173,8 @@ No NAT Gateway cost ($0 saved vs ~$35-65/mo with NAT).
 ---
 
 ## Terraform Modules
+
+**Implementation:** Partial — `terraform/modules/{vpc,eks,ecr,rds,dns,secrets,observability}/` exist with `variables.tf` stubs and empty `main.tf`. No module is called from an environment root. No `karpenter` module directory yet.
 
 ### Module: `vpc`
 
@@ -1287,6 +1336,8 @@ Provisions the IAM roles, SQS queue, and EventBridge rules needed for Karpenter.
 
 ## Helm Charts
 
+**Implementation:** Not started — no `helm/` or `helm-values/`.
+
 ### Architecture Decision
 
 Helm replaces plain K8s YAML + Kustomize overlays. A **single generic chart** (`helm/petclinic-service/`) is shared by all 8 services. Per-service and per-environment configuration is in `helm-values/`. See [ADR-0007](#adr-index).
@@ -1390,6 +1441,8 @@ ArgoCD automates this — see [GitOps with ArgoCD](#gitops-with-argocd).
 
 ## GitOps with ArgoCD
 
+**Implementation:** Not started.
+
 ### Architecture Decision
 
 ArgoCD handles all deployments (CD). GitHub Actions is CI-only (build, push, commit image tags). ArgoCD watches the Git repo and syncs automatically (dev) or after manual approval (prod). See [ADR-0008](#adr-index).
@@ -1471,6 +1524,8 @@ Developer pushes code → GitHub Actions builds + pushes ARM64 images to ECR
 ---
 
 ## Karpenter (Node Autoscaling)
+
+**Implementation:** Not started.
 
 ### Architecture Decision
 
@@ -1554,6 +1609,8 @@ spec:
 ---
 
 ## ADR Index
+
+**Implementation:** Partial — decisions are recorded in this table. `docs/adr/` files are not written yet (E-15).
 
 Architecture Decision Records are stored in `docs/adr/`.
 
