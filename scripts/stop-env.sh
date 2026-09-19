@@ -57,8 +57,9 @@ if [[ "${confirm}" != "DESTROY" ]]; then
   exit 1
 fi
 
+"${ROOT}/scripts/write-backend-config.sh"
 cd "${DIR}"
-terraform init -input=false
+terraform init -input=false -backend-config="${ROOT}/terraform/backend.hcl"
 terraform plan -destroy -var-file="${TFVARS}" -out plan.out
 
 echo ""

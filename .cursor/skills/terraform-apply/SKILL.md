@@ -14,8 +14,8 @@ Apply a previously saved Terraform plan.
 
 ## Steps
 
-1. Directory: `terraform/environments/{env}/`
-2. Require `plan.out`. If missing, tell the user to run the terraform-plan skill first.
+1. Directory: `terraform/environments/{env}/network/` or `.../workload/` matching the saved plan (default env: `dev`).
+2. Require `plan.out` in that directory. If missing, tell the user to run the terraform-plan skill first.
 3. `terraform show plan.out`
 4. Ask for explicit confirmation. For prod, warn that live services are affected.
 5. Only after yes: `terraform apply plan.out`

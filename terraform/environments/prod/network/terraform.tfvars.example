@@ -1,5 +1,6 @@
-aws_region  = "eu-central-1"
-environment = "prod"
+aws_region     = "eu-central-1"
+environment    = "prod"
+aws_account_id = "YOUR_AWS_ACCOUNT_ID"
 
 vpc_cidr             = "10.1.0.0/16"
 public_subnet_cidrs  = ["10.1.1.0/24", "10.1.2.0/24"]

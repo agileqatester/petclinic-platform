@@ -14,9 +14,9 @@ variable "vpc_id" {
   type        = string
 }
 
-variable "vpc_cidr" {
-  description = "VPC CIDR allowed to send traffic through the NAT instance"
-  type        = string
+variable "client_security_group_ids" {
+  description = "Security groups allowed to send traffic through the NAT (EKS node SG). SG-to-SG, not a VPC CIDR."
+  type        = list(string)
 }
 
 variable "public_subnet_ids" {

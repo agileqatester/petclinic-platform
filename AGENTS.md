@@ -48,7 +48,7 @@ Those Terraform / Helm / K8s / workflow paths are **story outputs**. They do not
 - **Provider:** AWS provider ~> 6.0, region eu-central-1
 - **Terraform:** >= 1.6.0
 - **ECR:** `aws_ecr_repository` in eu-central-1 with lifecycle policies, scan-on-push, and configurable tag immutability
-- **State:** S3 + DynamoDB locking, SSE-S3 (AES256). No customer CMK. RDS uses the AWS-managed `aws/rds` key (omit `kms_key_id`). Keys: `petclinic/{env}/network/terraform.tfstate` and `petclinic/{env}/workload/terraform.tfstate`.
+- **State:** S3 + DynamoDB locking, SSE-S3 (AES256). No customer CMK (ADR-0012). RDS uses the AWS-managed `aws/rds` key (omit `kms_key_id`). Keys: `petclinic/{env}/network/terraform.tfstate` and `petclinic/{env}/workload/terraform.tfstate`. Bucket name is `petclinic-terraform-state-{account}` via gitignored `terraform/backend.hcl` (`./scripts/write-backend-config.sh`). Never commit an AWS account ID.
 - **Modules:** All reusable modules in `terraform/modules/`. Environments call modules.
 - **Naming:** `petclinic-{env}-{resource}` (e.g., `petclinic-dev-vpc`, `petclinic-prod-eks`)
 - **Tagging:** Every resource MUST have tags: `Project=petclinic`, `Environment={dev|prod}`, `ManagedBy=terraform`
@@ -79,7 +79,7 @@ Those Terraform / Helm / K8s / workflow paths are **story outputs**. They do not
 - **Per-env config** in `helm-values/{dev,prod}.yaml` (replicas, HPA, PDB, resource quotas, ECR registry)
 - **ArgoCD merges values:** service file + env file when deploying
 - **Template outputs** validated with `helm template` before commit
-- **Never hardcode an AWS account ID** in values or templates — use `{account}.dkr.ecr.eu-central-1.amazonaws.com`
+- **Never hardcode an AWS account ID** in values, backends, or templates — use `{account}.dkr.ecr.eu-central-1.amazonaws.com` and gitignored `terraform.tfvars` / `backend.hcl`
 
 ## ArgoCD Conventions
 
@@ -158,8 +158,10 @@ helm template my-release helm/petclinic-service/ -f helm-values/{service}.yaml -
 kubectl port-forward svc/argocd-server -n argocd 8443:443
 argocd app sync {service}-{env}
 
-# Security scanning
-checkov -d terraform/modules/{module}
+# Security scanning (PETPLAT-66)
+python3 -m venv .venv && .venv/bin/pip install -r requirements-checkov.txt
+./scripts/checkov.sh            # terraform/
+./scripts/checkov.sh vpc        # one module
 ```
 
 ## MCP Servers (configured in .cursor/mcp.json)

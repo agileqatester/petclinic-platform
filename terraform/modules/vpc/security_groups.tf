@@ -1,4 +1,9 @@
+# Trust model (SG-to-SG, not CIDRs except internet → ALB 80/443):
+#   Internet → ALB SG :80/:443 → Node SG :8080 → RDS SG :3306
+# RDS must never allow 0.0.0.0/0.
+
 resource "aws_security_group" "eks_cluster" {
+  # checkov:skip=CKV2_AWS_5:Attached by the EKS cluster in PETPLAT-12
   name        = "${local.name_prefix}-eks-cluster"
   description = "EKS cluster (control plane) security group"
   vpc_id      = aws_vpc.this.id
@@ -9,6 +14,7 @@ resource "aws_security_group" "eks_cluster" {
 }
 
 resource "aws_security_group" "eks_node" {
+  # checkov:skip=CKV2_AWS_5:Attached by the node group in PETPLAT-13
   name        = "${local.name_prefix}-eks-node"
   description = "EKS node security group"
   vpc_id      = aws_vpc.this.id
@@ -19,6 +25,7 @@ resource "aws_security_group" "eks_node" {
 }
 
 resource "aws_security_group" "rds" {
+  # checkov:skip=CKV2_AWS_5:Attached by RDS in PETPLAT-22
   name        = "${local.name_prefix}-rds"
   description = "RDS MySQL from EKS nodes only"
   vpc_id      = aws_vpc.this.id
@@ -29,6 +36,7 @@ resource "aws_security_group" "rds" {
 }
 
 resource "aws_security_group" "alb" {
+  # checkov:skip=CKV2_AWS_5:Attached by the ingress ALB when LBC is installed
   name        = "${local.name_prefix}-alb"
   description = "Internet-facing ALB"
   vpc_id      = aws_vpc.this.id
@@ -111,6 +119,7 @@ resource "aws_vpc_security_group_ingress_rule" "rds_mysql_from_nodes" {
 # --- ALB ---
 
 resource "aws_vpc_security_group_ingress_rule" "alb_http" {
+  # checkov:skip=CKV_AWS_260:Internet-facing ALB HTTP (ADR-0001); TLS via ACM later
   security_group_id = aws_security_group.alb.id
   description       = "HTTP from internet"
   ip_protocol       = "tcp"

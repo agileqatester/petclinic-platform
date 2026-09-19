@@ -49,11 +49,13 @@ resource "aws_security_group" "this" {
   }
 }
 
-resource "aws_vpc_security_group_ingress_rule" "from_vpc" {
-  security_group_id = aws_security_group.this.id
-  description       = "Traffic from VPC to be NATed (no SSH)"
-  ip_protocol       = "-1"
-  cidr_ipv4         = var.vpc_cidr
+resource "aws_vpc_security_group_ingress_rule" "from_clients" {
+  count = length(var.client_security_group_ids)
+
+  security_group_id            = aws_security_group.this.id
+  description                  = "Traffic from client SG to be NATed (no SSH)"
+  ip_protocol                  = "-1"
+  referenced_security_group_id = var.client_security_group_ids[count.index]
 }
 
 resource "aws_vpc_security_group_egress_rule" "all" {
@@ -105,6 +107,7 @@ resource "aws_iam_instance_profile" "ssm" {
 }
 
 resource "aws_instance" "this" {
+  # checkov:skip=CKV_AWS_88:NAT instance must have a public IP and EIP (ADR-0001)
   ami           = var.ami_id != "" ? var.ami_id : data.aws_ami.al2023_arm.id
   instance_type = var.instance_type
   subnet_id     = var.public_subnet_ids[0]

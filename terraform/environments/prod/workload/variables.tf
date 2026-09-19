@@ -22,9 +22,13 @@ variable "project" {
 }
 
 variable "aws_account_id" {
-  description = "AWS account this environment is allowed to target"
+  description = "AWS account this environment is allowed to target. Set in terraform.tfvars (never commit)."
   type        = string
-  default     = "833123247984"
+
+  validation {
+    condition     = can(regex("^[0-9]{12}$", var.aws_account_id))
+    error_message = "aws_account_id must be a 12-digit AWS account ID in terraform.tfvars."
+  }
 }
 
 variable "nat_instance_type" {

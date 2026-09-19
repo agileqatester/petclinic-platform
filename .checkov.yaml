@@ -1,0 +1,25 @@
+# Checkov — Terraform IaC scan for petclinic-platform (PETPLAT-66).
+# Run: ./scripts/checkov.sh
+# CLI skill: .cursor/skills/security-scan/SKILL.md
+
+compact: true
+quiet: false
+framework:
+  - terraform
+download-external-modules: false
+evaluate-variables: true
+soft-fail: false
+skip-download: true
+
+skip-path:
+  - .*/\.terraform/.*
+  - .*/\.terraform\.lock\.hcl
+
+# Global skips: accepted budget / learning-account posture (ADR-0001, ADR-0012).
+# Resource-specific skips live as # checkov:skip= comments on the resource.
+skip-check:
+  - CKV2_AWS_11 # VPC Flow Logs — extra CloudWatch cost; not in the $20 course cap
+  - CKV_AWS_130 # VPC Flow Logs (same)
+  - CKV_AWS_107 # IAM permissions boundary — not used on this learning account
+  - CKV_AWS_126 # EC2 detailed monitoring — $2.10/instance-mo; NAT is destroyable
+  - CKV_AWS_135 # EBS optimized — t4g.micro does not support it

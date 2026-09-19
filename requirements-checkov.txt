@@ -1,0 +1,2 @@
+# Pinned for PETPLAT-66. Used by scripts/checkov.sh via .venv (gitignored).
+checkov==3.2.484

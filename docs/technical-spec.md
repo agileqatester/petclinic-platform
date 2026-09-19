@@ -88,7 +88,7 @@ These tags are applied via `default_tags` in the AWS provider configuration. Mod
 
 ## Terraform State Backend
 
-**Implementation:** Implemented — `scripts/bootstrap-state.sh` (SSE-S3 AES256, versioning, public-access block, DynamoDB `LockID`) and `terraform/environments/{dev,prod}/backend.tf` with keys `petclinic/{env}/terraform.tfstate`.
+**Implementation:** Implemented — `scripts/bootstrap-state.sh` (SSE-S3 AES256, versioning, all four public-access blocks, HTTPS-deny + AES256-only bucket policy, DynamoDB `LockID`). Partial backends in `terraform/environments/{dev,prod}/{network,workload}/backend.tf`. Bucket name is not committed (`./scripts/write-backend-config.sh` → `terraform/backend.hcl`).
 
 | Parameter | Value |
 |-----------|-------|
@@ -99,6 +99,7 @@ These tags are applied via `default_tags` in the AWS provider configuration. Mod
 | S3 Public Access | All blocked (4 settings) |
 | DynamoDB Table | `petclinic-terraform-locks` |
 | DynamoDB Partition Key | `LockID` (String) |
+| Bucket policy | Deny non-TLS (`aws:SecureTransport = false`); deny PutObject without AES256 |
 
 ### Per-Environment State Keys
 
@@ -157,7 +158,7 @@ CIDRs are non-overlapping to allow future VPC peering if needed. Public subnets 
 
 | Setting | Public | Private |
 |---------|--------|---------|
-| `map_public_ip_on_launch` | `true` | `false` |
+| `map_public_ip_on_launch` | `false` (NAT uses explicit public IP + EIP; ALB manages ENIs) | `false` |
 | AZ distribution | 2 subnets across 2 AZs | 2 subnets across 2 AZs |
 
 ### EKS Subnet Tags (Required)
@@ -172,9 +173,17 @@ CIDRs are non-overlapping to allow future VPC peering if needed. Public subnets 
 
 ## Security Groups
 
-**Implementation:** Not started — no `aws_security_group` resources (`PETPLAT-8`).
+**Implementation:** Slice 1 — VPC SGs in `terraform/modules/vpc/security_groups.tf`; NAT SG in `terraform/modules/nat/`.
 
 Five security groups per environment. Security groups remain mandatory. Private subnets are an extra layer, not a replacement (ADR-0001).
+
+Trust model (SG-to-SG except internet → ALB):
+
+```
+Internet → ALB SG :80/:443 → Node SG :8080 → RDS SG :3306
+```
+
+RDS must never allow `0.0.0.0/0`. Public subnets host only ALB + NAT.
 
 ### EKS Cluster Security Group
 
@@ -214,7 +223,7 @@ Five security groups per environment. Security groups remain mandatory. Private 
 
 | Rule | Type | Protocol | Port | Source/Destination |
 |------|------|----------|------|--------------------|
-| VPC traffic to NAT | Ingress | All | All | VPC CIDR |
+| Client traffic to NAT | Ingress | All | All | EKS Node SG (SG-to-SG, not VPC CIDR) |
 | All outbound | Egress | All | All | `0.0.0.0/0` |
 
 **Critical:** No SSH `:22`. Operator access to the NAT box is SSM Session Manager only (iptables repair). No inbound from `0.0.0.0/0`.
@@ -1109,6 +1118,10 @@ Five IAM Roles for Service Accounts, each with OIDC trust policy scoped to a spe
 
 SSM does not work with the network stack alone (no instances, no NAT).
 
+### Checkov (PETPLAT-66)
+
+Scan Terraform with Checkov 3.2.484 (`.checkov.yaml` + `./scripts/checkov.sh`). Global skips are budget/learning-account checks (VPC Flow Logs, IAM permissions boundary, EC2 detailed monitoring, EBS optimized on `t4g.micro`). Resource skips are `# checkov:skip=` comments: ALB HTTP `0.0.0.0/0` (ADR-0001), NAT public IP, and keep-stack SGs that attach when EKS/RDS/ALB land. Install once: `python3 -m venv .venv && .venv/bin/pip install -r requirements-checkov.txt`.
+
 ### Operator IP (`my_ip`)
 
 Same habit as saas-ntier-lab. The laptop public IP changes every connection. **Do not** put it in `terraform.tfvars`. Pass it on every **workload** `plan` / `apply`:
@@ -1258,7 +1271,7 @@ Destroyable learning stack. Single `t4g.micro` NAT instance (no NAT Gateway). Ca
 | `project` | string | Project name | `"petclinic"` |
 | `environment` | string | Environment | — |
 | `vpc_id` | string | VPC ID | — |
-| `vpc_cidr` | string | CIDR allowed to NAT (no SSH) | — |
+| `client_security_group_ids` | list(string) | SGs allowed to NAT (EKS node SG) | — |
 | `public_subnet_ids` | list(string) | Public subnets; instance in index 0 | — |
 | `instance_type` | string | NAT instance type | `"t4g.micro"` |
 | `enable_ssm` | bool | SSM instance profile | `true` |

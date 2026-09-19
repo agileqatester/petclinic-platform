@@ -40,6 +40,7 @@ Add files explicitly by name, e.g.:
     '\.p12($|[[:space:]])'
     '\.pfx($|[[:space:]])'
     'kubeconfig'
+    'backend\.hcl'
     'aws-credentials'
     'credentials\.json'
     'credentials\.yaml'

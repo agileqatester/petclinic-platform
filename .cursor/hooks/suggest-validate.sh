@@ -20,6 +20,7 @@ fi
 if echo "$FILE_PATH" | grep -qE '\.tf$'; then
   TF_DIR=$(dirname "$FILE_PATH")
   echo "Tip: You edited a Terraform file. Run terraform validate in ${TF_DIR}/ and terraform fmt -check."
+  echo "     Then scan with: ./scripts/checkov.sh"
 fi
 
 if echo "$FILE_PATH" | grep -qE 'k8s/.*\.(yaml|yml)$'; then

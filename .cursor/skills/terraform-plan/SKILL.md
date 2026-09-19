@@ -14,10 +14,13 @@ Run Terraform init and plan for the specified environment.
 
 ## Steps
 
-1. Directory: `terraform/environments/{env}/`
-2. `terraform init`
-3. `terraform plan -out plan.out`
-4. Summarize adds / changes / destroys. Warn explicitly if anything will be destroyed.
+1. Default `env` is `dev`. Do not plan prod for day-to-day learning.
+2. Ensure `terraform/backend.hcl` exists (`./scripts/write-backend-config.sh`) and each root has gitignored `terraform.tfvars` with `aws_account_id` (copy from `*.tfvars.example`).
+3. Plan **network** first: `terraform/environments/{env}/network/`
+   - `terraform init -backend-config=<repo>/terraform/backend.hcl`
+   - `terraform plan -var-file=terraform.tfvars -out plan.out`
+4. Workload (`.../{env}/workload/`) only after network state exists in S3. Same init/plan flags.
+5. Summarize adds / changes / destroys. Warn explicitly if anything will be destroyed.
 
 ## Important
 

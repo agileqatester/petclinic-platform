@@ -1,5 +1,6 @@
-aws_region  = "eu-central-1"
-environment = "prod"
+aws_region     = "eu-central-1"
+environment    = "prod"
+aws_account_id = "YOUR_AWS_ACCOUNT_ID"
 
 nat_instance_type = "t4g.micro"
 

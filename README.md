@@ -23,7 +23,7 @@ petclinic-platform/
 └── docs/                         # technical-spec, jira-backlog, later runbooks
 ```
 
-Do not commit `terraform.tfvars`, `*.tfvars.json`, `.env`, or kubeconfig. Use `*.tfvars.example` placeholders. Never put `my_ip` in tfvars.
+Do not commit `terraform.tfvars`, `*.tfvars.json`, `backend.hcl`, `.env`, or kubeconfig. Use `*.tfvars.example` / `backend.hcl.example` placeholders. Never put `my_ip` or an AWS account ID in Git.
 
 ## Operator IP (EKS API)
 
@@ -40,7 +40,7 @@ That CIDR is the EKS public API allow-list. Re-apply after you reconnect. Never 
 | Layer | Tool | Details |
 |-------|------|---------|
 | Cloud | AWS | eu-central-1 |
-| IaC | Terraform >= 1.6 | AWS provider ~> 6.0, S3 + DynamoDB state, SSE-S3 (AES256) |
+| IaC | Terraform >= 1.6 | AWS provider ~> 6.0, S3 + DynamoDB state, **SSE-S3 (AES256)** — deliberate (ADR-0012), not a customer CMK |
 | Cluster | Amazon EKS 1.35 | Standard support, AL2023 ARM nodes, API auth, CIDR-restricted public API |
 | Registry | Amazon ECR | One repo per service per env, lifecycle, scan-on-push |
 | Database | Amazon RDS MySQL 8.4 | db.t4g.micro, gp3, single-AZ, not publicly accessible |

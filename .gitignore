@@ -10,6 +10,8 @@ override.tf.json
 *_override.tf
 *_override.tf.json
 # Do NOT ignore .terraform.lock.hcl — it should be committed for reproducible builds
+backend.hcl
+**/backend.hcl
 
 # Sensitive files — NEVER commit
 *.tfvars

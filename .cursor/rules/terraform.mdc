@@ -15,8 +15,8 @@ Every module directory MUST contain:
 - `versions.tf` — required_providers with Terraform `>= 1.6.0` and AWS provider `~> 6.0`
 
 Environment root modules (`terraform/environments/{env}/network/` keep, `{env}/workload/` destroy) additionally have:
-- `backend.tf` — S3 backend configuration (SSE-S3 / AES256)
-- `terraform.tfvars.example` — placeholder values (commit this, never real `*.tfvars` or `*.tfvars.json`)
+- `backend.tf` — S3 backend configuration (SSE-S3 / AES256). Bucket name is not committed; use `terraform/backend.hcl` from `./scripts/write-backend-config.sh`
+- `terraform.tfvars.example` — placeholder values (commit this, never real `*.tfvars` or `*.tfvars.json`). `aws_account_id` has no default.
 
 ## Naming
 

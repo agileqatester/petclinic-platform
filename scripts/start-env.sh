@@ -44,8 +44,9 @@ EXAMPLE="${DIR}/terraform.tfvars.example"
 TFVARS="${DIR}/terraform.tfvars"
 
 if [[ ! -f "${TFVARS}" && -f "${EXAMPLE}" ]]; then
-  cp "${EXAMPLE}" "${TFVARS}"
-  echo "Created ${TFVARS} from example. Edit if needed (never commit it)."
+  ACCOUNT_ID="$(aws sts get-caller-identity --query Account --output text)"
+  sed "s/YOUR_AWS_ACCOUNT_ID/${ACCOUNT_ID}/" "${EXAMPLE}" > "${TFVARS}"
+  echo "Created ${TFVARS} from example (aws_account_id from STS). Never commit it."
 fi
 
 echo "============================================"
@@ -59,8 +60,9 @@ echo "  ./scripts/stop-env.sh ${ENV}"
 echo ""
 echo "This script only inits the workload module. Apply from a saved plan when you"
 echo "open the plan gate. Example:"
+echo "  ./scripts/write-backend-config.sh"
 echo "  cd ${DIR}"
-echo "  terraform init"
+echo "  terraform init -backend-config=${ROOT}/terraform/backend.hcl"
 echo "  terraform plan -var-file=terraform.tfvars -out plan.out"
 echo "  terraform apply plan.out"
 echo "============================================"
