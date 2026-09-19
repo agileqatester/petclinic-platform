@@ -4,9 +4,9 @@ set -euo pipefail
 #
 # bootstrap-state.sh — One-time Terraform remote-state backend (PETPLAT-2)
 #
-# Creates (or reconciles) a customer-managed KMS CMK, an S3 bucket with
-# versioning + SSE-KMS + S3 Bucket Keys + all four public-access blocks,
-# and a DynamoDB lock table. Safe to run multiple times.
+# Creates (or reconciles) an S3 bucket with versioning + SSE-S3 (AES256)
+# + all four public-access blocks, and a DynamoDB lock table. No customer-
+# managed KMS key (ADR-0012). Safe to run multiple times.
 #
 # Usage:
 #   ./scripts/bootstrap-state.sh
@@ -17,7 +17,7 @@ set -euo pipefail
 export AWS_PROFILE="${AWS_PROFILE:-petclinic}"
 
 REGION="eu-central-1"
-KMS_ALIAS="alias/petclinic-terraform-state"
+LEGACY_KMS_ALIAS="alias/petclinic-terraform-state"
 LOCK_TABLE="petclinic-terraform-locks"
 
 usage() {
@@ -55,13 +55,6 @@ aws_r() {
   aws --region "${REGION}" "$@"
 }
 
-TAGS_KMS=(
-  "TagKey=Project,TagValue=petclinic"
-  "TagKey=Environment,TagValue=shared"
-  "TagKey=ManagedBy,TagValue=script"
-  "TagKey=Component,TagValue=terraform-state"
-)
-
 TAGS_DDB=(
   "Key=Project,Value=petclinic"
   "Key=Environment,Value=shared"
@@ -77,46 +70,15 @@ echo ""
 
 ACCOUNT_ID="$(aws_r sts get-caller-identity --query Account --output text)"
 BUCKET="petclinic-terraform-state-${ACCOUNT_ID}"
-KMS_KEY_ARN=""
 
 echo "Account: ${ACCOUNT_ID}"
 echo "Bucket:  ${BUCKET}"
 echo "Table:   ${LOCK_TABLE}"
-echo "KMS:     ${KMS_ALIAS}"
-echo ""
-
-# --- KMS CMK (annual rotation) ---
-echo "[1/3] KMS customer-managed key"
-
-if KMS_KEY_ARN="$(aws_r kms describe-key \
-  --key-id "${KMS_ALIAS}" \
-  --query KeyMetadata.Arn \
-  --output text 2>/dev/null)"; then
-  echo "  -> Alias ${KMS_ALIAS} already exists."
-else
-  echo "  -> Creating CMK and alias ${KMS_ALIAS}..."
-  KMS_KEY_ARN="$(aws_r kms create-key \
-    --description "Petclinic Terraform state encryption (SSE-KMS)" \
-    --key-usage ENCRYPT_DECRYPT \
-    --customer-master-key-spec SYMMETRIC_DEFAULT \
-    --tags "${TAGS_KMS[@]}" \
-    --query KeyMetadata.Arn \
-    --output text)"
-  aws_r kms create-alias \
-    --alias-name "${KMS_ALIAS}" \
-    --target-key-id "${KMS_KEY_ARN}"
-  echo "  -> Created ${KMS_KEY_ARN}"
-fi
-
-aws_r kms enable-key-rotation \
-  --key-id "${KMS_KEY_ARN}" \
-  --rotation-period-in-days 365
-aws_r kms tag-resource --key-id "${KMS_KEY_ARN}" --tags "${TAGS_KMS[@]}"
-echo "  -> Annual rotation enabled."
+echo "Encrypt: SSE-S3 (AES256)"
 echo ""
 
 # --- S3 bucket ---
-echo "[2/3] S3 state bucket"
+echo "[1/3] S3 state bucket"
 
 bucket_exists=false
 if aws_r s3api head-bucket --bucket "${BUCKET}" >/dev/null 2>&1; then
@@ -159,15 +121,14 @@ aws_r s3api put-bucket-ownership-controls \
 
 aws_r s3api put-bucket-encryption \
   --bucket "${BUCKET}" \
-  --server-side-encryption-configuration "{
-    \"Rules\": [{
-      \"ApplyServerSideEncryptionByDefault\": {
-        \"SSEAlgorithm\": \"aws:kms\",
-        \"KMSMasterKeyID\": \"${KMS_KEY_ARN}\"
+  --server-side-encryption-configuration '{
+    "Rules": [{
+      "ApplyServerSideEncryptionByDefault": {
+        "SSEAlgorithm": "AES256"
       },
-      \"BucketKeyEnabled\": true
+      "BucketKeyEnabled": false
     }]
-  }"
+  }'
 
 BUCKET_POLICY="$(cat <<EOF
 {
@@ -196,7 +157,7 @@ BUCKET_POLICY="$(cat <<EOF
       "Resource": "arn:aws:s3:::${BUCKET}/*",
       "Condition": {
         "StringNotEquals": {
-          "s3:x-amz-server-side-encryption": "aws:kms"
+          "s3:x-amz-server-side-encryption": "AES256"
         }
       }
     },
@@ -222,11 +183,26 @@ aws_r s3api put-bucket-tagging \
   --bucket "${BUCKET}" \
   --tagging 'TagSet=[{Key=Project,Value=petclinic},{Key=Environment,Value=shared},{Key=ManagedBy,Value=script},{Key=Component,Value=terraform-state}]'
 
-echo "  -> Versioning, SSE-KMS (Bucket Keys), public-access block, HTTPS + KMS-only upload policy applied."
+# Re-encrypt current objects that still use the retired CMK so the new AES256
+# default actually applies (versioned buckets keep the old version).
+while IFS=$'\t' read -r KEY SSE; do
+  [[ -z "${KEY}" || "${KEY}" == "None" ]] && continue
+  if [[ "${SSE}" != "AES256" ]]; then
+    echo "  -> Rewriting s3://${BUCKET}/${KEY} to AES256"
+    aws_r s3api copy-object \
+      --bucket "${BUCKET}" \
+      --key "${KEY}" \
+      --copy-source "${BUCKET}/${KEY}" \
+      --server-side-encryption AES256 \
+      --metadata-directive COPY >/dev/null
+  fi
+done < <(aws_r s3api list-objects-v2 --bucket "${BUCKET}" --query 'Contents[].[Key,ServerSideEncryption]' --output text 2>/dev/null || true)
+
+echo "  -> Versioning, SSE-S3 (AES256), public-access block, HTTPS + AES256-only upload policy applied."
 echo ""
 
 # --- DynamoDB lock table ---
-echo "[3/3] DynamoDB lock table"
+echo "[2/3] DynamoDB lock table"
 
 if aws_r dynamodb describe-table --table-name "${LOCK_TABLE}" >/dev/null 2>&1; then
   HASH_KEY="$(aws_r dynamodb describe-table \
@@ -257,14 +233,33 @@ TABLE_ARN="$(aws_r dynamodb describe-table \
 aws_r dynamodb tag-resource --resource-arn "${TABLE_ARN}" --tags "${TAGS_DDB[@]}"
 echo ""
 
+# --- Retire leftover CMK from the previous SSE-KMS design ---
+echo "[3/3] Retire leftover customer-managed key (if any)"
+
+if KMS_KEY_ID="$(aws_r kms describe-key --key-id "${LEGACY_KMS_ALIAS}" --query KeyMetadata.KeyId --output text 2>/dev/null)"; then
+  KMS_STATE="$(aws_r kms describe-key --key-id "${KMS_KEY_ID}" --query KeyMetadata.KeyState --output text)"
+  if [[ "${KMS_STATE}" == "PendingDeletion" ]]; then
+    echo "  -> ${LEGACY_KMS_ALIAS} is already pending deletion."
+  else
+    echo "  -> Scheduling deletion of leftover CMK ${KMS_KEY_ID} (7-day window)."
+    aws_r kms schedule-key-deletion \
+      --key-id "${KMS_KEY_ID}" \
+      --pending-window-in-days 7 >/dev/null
+    aws_r kms delete-alias --alias-name "${LEGACY_KMS_ALIAS}" || true
+    echo "  -> Alias removed; key pending deletion."
+  fi
+else
+  echo "  -> No leftover alias ${LEGACY_KMS_ALIAS}."
+fi
+echo ""
+
 echo "============================================"
 echo "  Bootstrap complete (idempotent)"
 echo "============================================"
 echo "  Region:         ${REGION}"
 echo "  State bucket:   ${BUCKET}"
 echo "  Lock table:     ${LOCK_TABLE}"
-echo "  KMS key ARN:    ${KMS_KEY_ARN}"
-echo "  KMS alias:      ${KMS_ALIAS}"
+echo "  Encryption:     SSE-S3 (AES256)"
 echo ""
 echo "Next: configure terraform/environments/{dev,prod}/backend.tf (PETPLAT-3 / PETPLAT-4)"
-echo "      then run terraform init in each environment."
+echo "      then run terraform init -reconfigure in each environment (no kms_key_id)."

@@ -8,7 +8,7 @@
 
 Split Terraform by cost habit (same as saas-ntier-lab):
 
-- **Network (keep):** VPC, public and private subnets, IGW, S3 gateway endpoint, route tables, baseline security groups. Idle cost ~$0 plus ~$1 for remote state.
+- **Network (keep):** VPC, public and private subnets, IGW, S3 gateway endpoint, route tables, baseline security groups. Idle cost ~$0 (remote state is SSE-S3; see ADR-0012).
 - **Learning (destroy after the session):** NAT instance + EIP, EKS, nodes, RDS, ALB. Dev only for day-to-day learning; do not leave prod up.
 
 Operator paths (included in this budget, no extra SKUs):
@@ -17,7 +17,7 @@ Operator paths (included in this budget, no extra SKUs):
 - **SSM Session Manager** on EKS nodes (host debug: kubelet, CNI, disk) and on the NAT instance (iptables repair only). Attach `AmazonSSMManagedInstanceCore`. No SSH port 22, no bastion. Optional SSM port-forward to RDS via a node (nodes already reach 3306). Session Manager itself is $0; agent traffic uses the NAT instance to reach public SSM endpoints while the learning stack is up. When that stack is destroyed there are no SSM targets.
 - **Workload egress** via NAT: ECR API, STS, Secrets Manager, config-server Git, genai OpenAI. S3/ECR layers use the S3 gateway.
 
-Keep IMDSv2 hop limit 1 on nodes and RDS `publicly_accessible = false`. Encrypt RDS with the **same** CMK as the state bucket (`alias/petclinic-terraform-state`) — one key, already paid, no second CMK.
+Keep IMDSv2 hop limit 1 on nodes and RDS `publicly_accessible = false`. Encryption for state and RDS is AWS-managed (ADR-0012) — no customer CMK.
 
 **Consequences:**
 - Positive: Nodes and RDS are not internet-addressable. Security groups stay required but are no longer the only control. Matches the lab/interview pattern. Extra NAT cost is about $7/month per environment only if left on ($0.0096/hour t4g.micro in eu-central-1); the accepted habit is destroy-after-session, so NAT is ~$0.01/hour during learning. Course target is under $20 AWS spend if the learning stack is destroyed after each session ($0.10/hour EKS standard; 24/7 is ~$73/month for the control plane alone). SSM and kubectl add $0. Eight services still schedule on 2x t4g.small; NAT is a separate instance.

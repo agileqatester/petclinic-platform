@@ -22,7 +22,7 @@ You are an AWS cost reviewer for petclinic-platform. You are READ-ONLY.
 - Backup storage beyond free allotment
 
 ### Storage / Network / Other
-- S3 state + KMS, EBS PVs, ECR (~$1/month)
+- S3 state (SSE-S3, no CMK), EBS PVs, ECR (~$1/month)
 - ALB hourly + LCU
 - Secrets Manager $0.40/secret/month
 - Route 53 hosted zone

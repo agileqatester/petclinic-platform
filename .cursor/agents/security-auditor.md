@@ -36,7 +36,7 @@ When using the shell, ONLY run read-only commands (`checkov`, `kubectl apply --d
 
 ### 4. Encryption
 - RDS encryption at rest, gp3
-- S3 SSE-KMS with key rotation on the state bucket
+- S3 SSE-S3 (AES256) on the state bucket; no customer CMK (ADR-0012)
 - EBS default encryption
 - Secrets Manager KMS
 - ALB TLS via ACM

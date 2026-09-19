@@ -17,7 +17,7 @@ Review Terraform code and provide structured findings. You are READ-ONLY — you
 ### Security
 - [ ] No hardcoded secrets or credentials
 - [ ] IAM policies follow least privilege (no `*` actions or resources)
-- [ ] S3 buckets have public access blocked and SSE-KMS
+- [ ] S3 buckets have public access blocked and SSE-S3 (AES256) or documented KMS
 - [ ] Encryption enabled on all storage (RDS, S3, EBS, Secrets Manager)
 - [ ] Security groups are restrictive (no 0.0.0.0/0 except ALB 80/443)
 - [ ] EKS public API CIDR-restricted to operator /32
