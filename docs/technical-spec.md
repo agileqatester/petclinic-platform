@@ -122,7 +122,9 @@ These tags are applied via `default_tags` in the AWS provider configuration. Mod
 
 ### Architecture Decision
 
-All-public subnet design. No NAT Gateway, no private subnets, no VPC endpoints. Security groups are the perimeter. Saves ~$35-65/month per student. See [ADR-0001](#adr-index).
+Private EKS nodes and RDS. Public subnets only for the internet-facing ALB and one `t4g.micro` NAT instance. S3 gateway endpoint (free). No NAT Gateway. No interface VPC endpoints. Security groups remain mandatory. See [ADR-0001](./adr/ADR-0001-private-nodes-nat-instance.md).
+
+**Budget habit (keep vs destroy):** network stack stays on (VPC, subnets, IGW, S3 gateway, SGs, route tables — ~$0 plus ~$1 state). Learning stack is destroyed after each session (NAT instance + EIP, EKS, nodes, RDS, ALB). Dev only for day-to-day learning. Operator access is kubectl (EKS API `/32`) plus SSM Session Manager on nodes and NAT — no SSH, no bastion, no SSM VPCEs.
 
 ### CIDR Allocation
 
@@ -131,8 +133,10 @@ All-public subnet design. No NAT Gateway, no private subnets, no VPC endpoints. 
 | VPC CIDR | `10.0.0.0/16` (65,536 IPs) | `10.1.0.0/16` (65,536 IPs) |
 | Public Subnet 1 (AZ a) | `10.0.1.0/24` (251 usable) | `10.1.1.0/24` (251 usable) |
 | Public Subnet 2 (AZ b) | `10.0.2.0/24` (251 usable) | `10.1.2.0/24` (251 usable) |
+| Private Subnet 1 (AZ a) | `10.0.11.0/24` (251 usable) | `10.1.11.0/24` (251 usable) |
+| Private Subnet 2 (AZ b) | `10.0.12.0/24` (251 usable) | `10.1.12.0/24` (251 usable) |
 
-CIDRs are non-overlapping to allow future VPC peering if needed.
+CIDRs are non-overlapping to allow future VPC peering if needed. Public subnets host ALB ENIs and the NAT instance. Private subnets host EKS nodes and RDS.
 
 ### VPC Settings
 
@@ -141,23 +145,26 @@ CIDRs are non-overlapping to allow future VPC peering if needed.
 | DNS Support | `true` |
 | DNS Hostnames | `true` |
 | Internet Gateway | 1 per VPC, attached |
-| Route Table | 1 public route table, `0.0.0.0/0` → IGW |
+| Public route table | `0.0.0.0/0` → IGW |
+| Private route table | `0.0.0.0/0` → NAT instance ENI (only while the learning stack is up) |
 | NAT Gateway | None (intentional) |
-| VPC Endpoints | None (not needed with public subnets) |
+| NAT instance | One `t4g.micro`, AZ-a public subnet, EIP, AL2023 ARM, source/dest check off, IMDSv2, SSM (not SSH), iptables MASQUERADE. Destroy with the learning stack. |
+| VPC Endpoints | S3 **gateway** only (free). No interface endpoints (ECR, STS, Secrets Manager, SSM). |
 
 ### Subnet Settings
 
-| Setting | Value |
-|---------|-------|
-| `map_public_ip_on_launch` | `true` |
-| AZ distribution | 2 subnets across 2 AZs |
+| Setting | Public | Private |
+|---------|--------|---------|
+| `map_public_ip_on_launch` | `true` | `false` |
+| AZ distribution | 2 subnets across 2 AZs | 2 subnets across 2 AZs |
 
 ### EKS Subnet Tags (Required)
 
-| Tag Key | Value | Purpose |
-|---------|-------|---------|
-| `kubernetes.io/cluster/petclinic-{env}` | `shared` | EKS cluster association |
-| `kubernetes.io/role/elb` | `1` | ALB subnet discovery |
+| Tag Key | Where | Value | Purpose |
+|---------|-------|-------|---------|
+| `kubernetes.io/cluster/petclinic-{env}` | Public and private | `shared` | EKS cluster association |
+| `kubernetes.io/role/elb` | Public | `1` | Internet-facing ALB subnet discovery |
+| `kubernetes.io/role/internal-elb` | Private | `1` | Internal ELB subnet discovery |
 
 ---
 
@@ -165,7 +172,7 @@ CIDRs are non-overlapping to allow future VPC peering if needed.
 
 **Implementation:** Not started — no `aws_security_group` resources (`PETPLAT-8`).
 
-Four security groups per environment. Security groups are the **primary access control boundary** in this all-public design.
+Five security groups per environment. Security groups remain mandatory. Private subnets are an extra layer, not a replacement (ADR-0001).
 
 ### EKS Cluster Security Group
 
@@ -181,7 +188,7 @@ Four security groups per environment. Security groups are the **primary access c
 | All from cluster SG | Ingress | All | All | EKS Cluster SG |
 | Inter-node communication | Ingress | All | All | Self (EKS Node SG) |
 | Kubelet API from cluster | Ingress | TCP | 10250 | EKS Cluster SG |
-| NodePort services | Ingress | TCP | 30000-32767 | ALB SG |
+| API Gateway from ALB (LBC IP targets) | Ingress | TCP | 8080 | ALB SG |
 | All outbound | Egress | All | All | `0.0.0.0/0` |
 
 ### RDS Security Group
@@ -199,8 +206,16 @@ Four security groups per environment. Security groups are the **primary access c
 |------|------|----------|------|--------------------|
 | HTTP from internet | Ingress | TCP | 80 | `0.0.0.0/0` |
 | HTTPS from internet | Ingress | TCP | 443 | `0.0.0.0/0` |
-| To nodes (target group) | Egress | TCP | 30000-32767 | EKS Node SG |
-| Health checks to nodes | Egress | TCP | 8080 | EKS Node SG |
+| To api-gateway pods (LBC `target-type: ip`) | Egress | TCP | 8080 | EKS Node SG |
+
+### NAT Instance Security Group
+
+| Rule | Type | Protocol | Port | Source/Destination |
+|------|------|----------|------|--------------------|
+| VPC traffic to NAT | Ingress | All | All | VPC CIDR |
+| All outbound | Egress | All | All | `0.0.0.0/0` |
+
+**Critical:** No SSH `:22`. Operator access to the NAT box is SSM Session Manager only (iptables repair). No inbound from `0.0.0.0/0`.
 
 ---
 
@@ -218,7 +233,7 @@ Four security groups per environment. Security groups are the **primary access c
 | API Server Endpoint | Public + private, **CIDR-restricted** to operator `/32` (`public_access_cidrs`). Never `0.0.0.0/0`. | Same |
 | Authentication Mode | `API` (no aws-auth ConfigMap) | `API` |
 | Cluster Logging | `api`, `audit`, `authenticator` | `api`, `audit`, `authenticator` |
-| Subnets | Public (AZ a + b) | Public (AZ a + b) |
+| Subnets | Private (nodes); public remain tagged for ALB | Same |
 
 ### Cluster IAM Role
 
@@ -254,6 +269,7 @@ Created from EKS cluster identity issuer URL. Required for IRSA (IAM Roles for S
 | `AmazonEKSWorkerNodePolicy` | AWS Managed |
 | `AmazonEKS_CNI_Policy` | AWS Managed |
 | `AmazonEC2ContainerRegistryReadOnly` | AWS Managed |
+| `AmazonSSMManagedInstanceCore` | AWS Managed (Session Manager; no SSH) |
 
 ### EKS Managed Add-ons
 
@@ -368,7 +384,7 @@ ECR Private: 500 MB free tier, then $0.10/GB/month. With 8 services at ~200 MB e
 | Max Allocated Storage (autoscaling) | 20 GB | 20 GB |
 | Storage Type | `gp3` | `gp3` |
 | Storage Encrypted | `true` (AWS default KMS key) | `true` (AWS default KMS key) |
-| Publicly accessible | `false` | `false` |
+| Publicly accessible | `false` (private subnets; no IGW route) | `false` (private subnets; no IGW route) |
 | Backup Retention | 7 days | 7 days |
 | Skip Final Snapshot | `true` | `false` |
 | Deletion Protection | `false` | `true` |
@@ -557,6 +573,8 @@ metadata:
 spec:
   ingressClassName: alb
 ```
+
+Services stay **ClusterIP**. Do not create NodePorts. LBC `target-type: ip` registers **pod IPs** on container port 8080 (same as saas-ntier-lab). The ALB lives in public subnets; nodes stay private. NetworkPolicy for api-gateway must allow the **public subnet CIDRs** (ALB ENIs), not the VPC CIDR and not NodePort SNAT.
 
 ### Ingress Routing
 
@@ -1064,7 +1082,7 @@ Five IAM Roles for Service Accounts, each with OIDC trust policy scoped to a spe
 | Default deny ingress | `petclinic-{env}` | Deny all ingress by default |
 | Config Server allow | `petclinic-{env}` | Allow ingress to 8888 from all pods in namespace |
 | Discovery Server allow | `petclinic-{env}` | Allow ingress to 8761 from all pods in namespace |
-| API Gateway allow | `petclinic-{env}` | Allow ingress to 8080 from ALB (ingress controller) |
+| API Gateway allow | `petclinic-{env}` | Allow ingress to 8080 from **public subnet CIDRs** (ALB ENIs, `target-type: ip`). Not the VPC CIDR. |
 | Domain services allow | `petclinic-{env}` | Allow ingress to 8081-8084 from API Gateway pods only |
 | Admin Server allow | `petclinic-{env}` | Allow ingress to 9090 from internal only |
 | Egress allow | `petclinic-{env}` | Allow egress to Config Server, Discovery, RDS, DNS (53), HTTPS (443) |
@@ -1075,6 +1093,19 @@ Five IAM Roles for Service Accounts, each with OIDC trust policy scoped to a spe
 |-----------|---------|------|-------|
 | `petclinic-dev` | `baseline` | `restricted` | `restricted` |
 | `petclinic-prod` | `baseline` | `restricted` | `restricted` |
+
+### Operator access (no extra SKUs)
+
+| Path | How | Cost |
+|------|-----|------|
+| kubectl | EKS API public+private, `public_access_cidrs` = operator `/32` | included in EKS control plane |
+| Host debug (kubelet, CNI, disk) | SSM Session Manager on EKS nodes (`AmazonSSMManagedInstanceCore`) | $0; uses NAT to public SSM endpoints while the learning stack is up |
+| NAT repair | SSM on the NAT instance only (iptables) | $0 |
+| RDS from laptop | Optional SSM port-forward via a node (nodes already allow 3306) | $0 |
+| SSH / bastion | Not used | — |
+| SSM / ECR / STS interface VPCEs | Not used (budget) | — |
+
+SSM does not work with the network stack alone (no instances, no NAT).
 
 ---
 
@@ -1098,11 +1129,13 @@ This is a learning project. Instance choices maximize AWS free tier eligibility.
 | Route 53 | $1 | $1 | $0.50/zone + queries |
 | Secrets Manager | $1 | $1 | $0.40/secret/month (~3 secrets) |
 | Data Transfer | $1 | $1 | 100 GB/mo free |
-| **Total** | **~$80/mo** | **~$80/mo** | EKS control plane is the main cost |
+| NAT instance (`t4g.micro`) | $0 session / ~$7 if left on | same | Destroy with EKS; not NAT Gateway |
+| **Total if left 24/7** | **~$80–87/mo** | **~$80–87/mo** | EKS control plane is the main cost |
+| **Total with destroy-after-session** | **~$6–10/mo** | do not run | Network ~$1 idle + EKS $0.10/hr while up |
 
-> **Students should `terraform destroy` after each session** to minimize EKS control plane charges. At $0.10/hr, running EKS for 10 hours/week = ~$17/month. Target: **entire course under $50 AWS spend.**
+> **Students should destroy the learning stack after each session** (NAT, EKS, nodes, RDS, ALB) and keep the network stack. At $0.10/hr, running EKS for 10 hours/week = ~$4–5/month for the control plane (plus NAT ~$0.01/hr while up). Target: **entire course under $50 AWS spend.** Do not leave EKS overnight. Do not run prod for day-to-day learning.
 
-No NAT Gateway cost ($0 saved vs ~$35-65/mo with NAT).
+Always-on network (VPC, subnets, IGW, S3 gateway) is ~$0 plus ~$1 state. NAT instance is **~$7/month only if left on** — it belongs in the destroyable stack. No NAT Gateway (~$38–76/month avoided). No interface VPCEs. SSM Session Manager is $0 (uses NAT to reach public SSM APIs during a session).
 
 ### Spot Instance Configuration (Dev — Optional)
 
@@ -1186,13 +1219,15 @@ No NAT Gateway cost ($0 saved vs ~$35-65/mo with NAT).
 | `environment` | string | Environment (dev/prod) | — |
 | `vpc_cidr` | string | VPC CIDR block | — |
 | `public_subnet_cidrs` | list(string) | Public subnet CIDRs | — |
+| `private_subnet_cidrs` | list(string) | Private subnet CIDRs (nodes, RDS) | — |
 | `availability_zones` | list(string) | AZs for subnets | — |
 | `tags` | map(string) | Additional tags | `{}` |
 
 | Output | Type | Description |
 |--------|------|-------------|
 | `vpc_id` | string | VPC ID |
-| `public_subnet_ids` | list(string) | Public subnet IDs |
+| `public_subnet_ids` | list(string) | Public subnet IDs (ALB, NAT instance) |
+| `private_subnet_ids` | list(string) | Private subnet IDs (nodes, RDS) |
 | `eks_cluster_sg_id` | string | EKS cluster security group ID |
 | `eks_node_sg_id` | string | EKS node security group ID |
 | `rds_sg_id` | string | RDS security group ID |
@@ -1610,13 +1645,13 @@ spec:
 
 ## ADR Index
 
-**Implementation:** Partial — decisions are recorded in this table. `docs/adr/` files are not written yet (E-15).
+**Implementation:** Partial — decisions are recorded in this table. ADR-0001 is in `docs/adr/`; other `docs/adr/` files are not written yet (E-15).
 
-Architecture Decision Records are stored in `docs/adr/`.
+Architecture Decision Records are stored in `docs/adr/`. ADR-0001 is written; remaining rows are still index-only until E-15.
 
 | ADR | Title | Status | Summary |
 |-----|-------|--------|---------|
-| ADR-0001 | All-public subnet design (no NAT Gateway) | Accepted | Cost optimization for student learning. SGs are the perimeter. Saves ~$35-65/mo. Trade-off: less defense-in-depth. |
+| ADR-0001 | Private EKS nodes with t4g.micro NAT instance | Accepted | Public subnets for ALB + NAT instance only. Nodes and RDS private. S3 gateway endpoint. No NAT Gateway. No interface VPCEs. Network stack stays; learning stack (including NAT) destroyed after each session. SSM Session Manager on nodes/NAT (no bastion). ~$7/mo NAT only if left on vs ~$38–76 NAT GW. |
 | ADR-0002 | EKS over ECS | Accepted | EKS chosen for industry relevance and Kubernetes learning. ECS would be simpler but less transferable. |
 | ADR-0003 | Shared RDS instance for all services | Accepted | Single `petclinic` database shared by 3 services. Matches app design (FK constraints cross-service). Simpler ops, lower cost. |
 | ADR-0004 | Plain K8s YAML over Helm | Superseded by ADR-0007 | Originally chose Kustomize for transparency. Superseded by Helm for industry relevance. |

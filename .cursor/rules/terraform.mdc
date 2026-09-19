@@ -42,10 +42,11 @@ Prefer `default_tags` on the AWS provider plus a module `tags` variable for serv
 - Block public access on every S3 bucket
 - No wildcard IAM (`Action = "*"` + `Resource = "*"`)
 - Encrypt RDS, S3 (SSE-KMS with rotation), EBS
-- Security groups are the perimeter (all-public subnets, ADR-0001)
+- Security groups remain mandatory; nodes and RDS are in **private** subnets (ADR-0001)
 - EKS public API: CIDR-restricted to the operator `/32`, never `0.0.0.0/0`
 - Node launch templates: IMDSv2 `http_tokens = required`, `http_put_response_hop_limit = 1`
-- RDS `publicly_accessible = false`
+- RDS `publicly_accessible = false` in private subnets
+- No SSH; SSM Session Manager on nodes and NAT (`AmazonSSMManagedInstanceCore`)
 - Prod RDS: `deletion_protection = true`, `skip_final_snapshot = false`
 
 ## Versions (Sep 2026)

@@ -15,7 +15,7 @@ These are **sibling clones** (`../` from this repo). Never write, commit, or cop
 | `../saas-ntier-lab` | Private EKS nodes, `t4g.micro` NAT instance (`modules/nat/`), S3 gateway endpoint. Preferred network pattern vs all-public IGW when it fits the budget. |
 | `../ntier-app` | Private lab and interview docs. Same family as saas. Never commit its content here. |
 
-In chat, `@aidlc-workflows` / `@saas-ntier-lab` after the workspace is open. `docs/technical-spec.md` is the course contract; an **accepted ADR** may override it (e.g. NAT instance). Until then, implementers follow the spec.
+In chat, `@aidlc-workflows` / `@saas-ntier-lab` after the workspace is open. `docs/technical-spec.md` is the course contract; **accepted ADR-0001** overrides the old all-public crossword (private nodes + `t4g.micro` NAT instance in the destroyable stack). Implementers follow the spec as updated by that ADR.
 
 **Human gates:** you approve every stage (architecture → plan → code → review → terraform plan → apply). See `docs/ai-sdlc.md` and `.cursor/rules/human-gates.mdc`. Do not chain stages unless the user explicitly proceeds.
 
@@ -96,12 +96,12 @@ Those Terraform / Helm / K8s / workflow paths are **story outputs**. They do not
 3. **No open security groups** — no 0.0.0.0/0 ingress except ALB on 80/443
 4. **Encryption everywhere** — RDS encryption at rest, S3 SSE-KMS, EBS encryption, Secrets Manager KMS
 5. **Least privilege IAM** — specific actions on specific resources, never `*/*`
-6. **Security groups are the perimeter** — all resources in public subnets (cost optimization for learning), SGs enforce access control
+6. **Private nodes and RDS** — public subnets only for ALB and the NAT instance (ADR-0001). Security groups stay mandatory. No SSH, no bastion; operator host debug is SSM Session Manager (nodes + NAT). No interface VPCEs.
 7. **No terraform destroy without approval** — hooks block this command
 8. **No *.tfvars or .env files committed** — .gitignore enforces this
 9. **EKS API is never 0.0.0.0/0** — public endpoint must be CIDR-restricted to the operator `/32`
 10. **IMDSv2 required, hop limit 1** on node launch templates (blocks pod IMDS credential theft)
-11. **RDS is not publicly accessible** even though it sits in a public subnet
+11. **RDS is not publicly accessible** and sits in private subnets (no IGW route)
 12. **Prod deletion protection** on RDS; prod takes a final snapshot
 
 ## AWS Environment Details

@@ -36,7 +36,8 @@ Review Terraform code and provide structured findings. You are READ-ONLY — you
 
 ### Cost Optimization
 - [ ] Right-sized instances (t4g.small / db.t4g.micro)
-- [ ] No NAT Gateway (all-public subnet design)
+- [ ] No NAT Gateway (use t4g.micro NAT instance in the destroyable stack, ADR-0001)
+- [ ] Nodes and RDS in private subnets; S3 gateway endpoint only (no interface VPCEs)
 - [ ] EKS not pinned to extended support ($0.60/hour)
 - [ ] ECR lifecycle policies
 

@@ -17,7 +17,7 @@ Read-only Checkov scan.
 1. Target `terraform/modules/{module}/` or `terraform/`
 2. Run `checkov -d {target} --framework terraform --output json` (HashiCorp Terraform MCP does not expose Checkov)
 3. Categorize: Critical (public access, missing encryption, wildcard IAM) / High / Medium / Low
-4. Note intentional exceptions (all-public subnets, single-AZ RDS)
+4. Note intentional exceptions (private nodes + NAT instance not NAT Gateway, single-AZ RDS, no interface VPCEs)
 5. If Critical findings exist, say: fix before applying to any environment.
 
 For a full audit, use the security-auditor subagent.

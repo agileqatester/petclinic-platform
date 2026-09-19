@@ -23,8 +23,9 @@ When using the shell, ONLY run read-only commands (`checkov`, `kubectl apply --d
 - Sensitive outputs marked `sensitive = true`
 
 ### 2. Network Security
-- All-public subnet design is intentional (ADR-0001); SGs are the perimeter
-- No unrestricted ingress except ALB 80/443
+- Private nodes and RDS (ADR-0001); public subnets only for ALB + NAT instance
+- SGs remain mandatory; no unrestricted ingress except ALB 80/443
+- No SSH/bastion; SSM Session Manager on nodes and NAT (no SSM interface VPCEs)
 - RDS SG: 3306 from EKS node SG only; publicly_accessible = false
 - EKS API: public endpoint restricted to operator /32, never 0.0.0.0/0
 

@@ -48,7 +48,7 @@ Revise ADR-0001: private EKS nodes + NAT instance vs all-public IGW.
 No Terraform. Stop for my approval.
 ```
 
-Then wait. When you accept the ADR, a **new** chat: implementation **plan** only. After you accept the plan: code. Then review, then plan, then apply — each a separate proceed.
+Then wait. ADR-0001 is **Accepted** (2026-09-19): private EKS nodes + NAT instance in the destroyable stack. When you accept a later ADR, a **new** chat: implementation **plan** only. After you accept the plan: code. Then review, then plan, then apply — each a separate proceed.
 
 ## Cursor pieces in this repo
 

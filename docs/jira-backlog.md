@@ -8,29 +8,33 @@
 
 ## Epics Overview
 
-| Epic # | Epic | Priority | Stories |
-|--------|------|----------|---------|
-| E-0 | Cursor Agent Setup | P0 | 5 |
-| E-1 | Foundation & Remote State | P0 | 5 |
-| E-2 | Networking (VPC) | P0 | 5 |
-| E-3 | EKS Cluster | P0 | 7 |
-| E-4 | Container Registry (ECR) | P0 | 5 |
-| E-5 | Database (RDS MySQL) | P0 | 6 |
-| E-6 | DNS & Ingress | P1 | 5 |
-| E-7 | Secrets Management (Secrets Manager) | P0 | 6 |
-| E-8 | Kubernetes Manifests — Base | P0 | 8 |
-| E-9 | Kubernetes Manifests — Overlays | P1 | 5 |
-| E-10 | CI Pipeline (CI-only, ArgoCD handles CD) | P0 | 7 |
-| E-11 | Observability | P1 | 8 |
-| ~~E-12~~ | ~~Bastion Host~~ | ~~P2~~ | ~~0 (removed)~~ |
-| E-13 | Security & Compliance | P1 | 8 |
-| E-14 | Scaling & Cost Optimization (Karpenter) | P2 | 6 |
-| E-15 | Documentation & Runbooks | P1 | 11 |
-| E-16 | Helm Charts | P0 | 5 |
-| E-17 | GitOps with ArgoCD | P0 | 5 |
-| | | **Total** | **108** |
+
+| Epic #   | Epic                                     | Priority  | Stories         |
+| -------- | ---------------------------------------- | --------- | --------------- |
+| E-0      | Cursor Agent Setup                       | P0        | 5               |
+| E-1      | Foundation & Remote State                | P0        | 5               |
+| E-2      | Networking (VPC)                         | P0        | 5               |
+| E-3      | EKS Cluster                              | P0        | 7               |
+| E-4      | Container Registry (ECR)                 | P0        | 5               |
+| E-5      | Database (RDS MySQL)                     | P0        | 6               |
+| E-6      | DNS & Ingress                            | P1        | 5               |
+| E-7      | Secrets Management (Secrets Manager)     | P0        | 6               |
+| E-8      | Kubernetes Manifests — Base              | P0        | 8               |
+| E-9      | Kubernetes Manifests — Overlays          | P1        | 5               |
+| E-10     | CI Pipeline (CI-only, ArgoCD handles CD) | P0        | 7               |
+| E-11     | Observability                            | P1        | 8               |
+| ~~E-12~~ | ~~Bastion Host~~                         | ~~P2~~    | ~~0 (removed)~~ |
+| E-13     | Security & Compliance                    | P1        | 8               |
+| E-14     | Scaling & Cost Optimization (Karpenter)  | P2        | 6               |
+| E-15     | Documentation & Runbooks                 | P1        | 11              |
+| E-16     | Helm Charts                              | P0        | 5               |
+| E-17     | GitOps with ArgoCD                       | P0        | 5               |
+|          |                                          | **Total** | **108**         |
+
 
 ---
+
+
 
 ## Epic Dependencies
 
@@ -61,6 +65,8 @@ E-1 (Foundation)
 
 ---
 
+
+
 # EPIC E-0: Cursor Agent Setup
 
 **Priority:** P0
@@ -69,6 +75,8 @@ E-1 (Foundation)
 **Blocks:** E-1 (all subsequent work uses this configuration)
 
 ---
+
+
 
 ### PETPLAT-001: Configure MCP servers for petclinic-platform
 
@@ -83,6 +91,7 @@ E-1 (Foundation)
 Create `.cursor/mcp.json` with the MCP servers needed for the infrastructure workflow (HashiCorp Terraform Registry docs, AWS knowledge, AWS pricing, Context7). **Do not add Atlassian/Jira** — work is tracked in `docs/jira-backlog.md`. AWS Labs yanked `awslabs-terraform-mcp-server`; use HashiCorp `terraform-mcp-server`. Checkov stays CLI (`security-scan` skill).
 
 **Acceptance Criteria:**
+
 - [x] `.cursor/mcp.json` at petclinic-platform (Cursor project MCP)
 - [x] Terraform MCP server configured (`terraform` → HashiCorp `terraform-mcp-server`, not the yanked AWS Labs package)
 
@@ -94,6 +103,8 @@ Create `.cursor/mcp.json` with the MCP servers needed for the infrastructure wor
 - [ ] Student enables the servers in Cursor Settings → MCP and trusts the workspace
 
 ---
+
+
 
 ### PETPLAT-002: Create Cursor safety hooks
 
@@ -108,6 +119,7 @@ Create `.cursor/mcp.json` with the MCP servers needed for the infrastructure wor
 Create safety hook scripts in `.cursor/hooks/` and configure them in `.cursor/hooks.json`. Hooks prevent the agent from running dangerous commands (`terraform destroy`, `rm -rf` on infra dirs, committing secrets) and ask before `terraform apply` without a saved plan. An informational hook suggests validation after editing infra files.
 
 **Acceptance Criteria:**
+
 - [x] `.cursor/hooks.json` with `beforeShellExecution`, `beforeMCPExecution`, `afterFileEdit`
 - [x] `block-destroy.sh` — denies `terraform destroy` / prod kubectl deletes (`failClosed: true`)
 - [x] `block-dangerous-rm.sh` — denies `rm -rf` on terraform/, k8s/, helm/, .github/, .cursor/, docs/, scripts/
@@ -119,6 +131,8 @@ Create safety hook scripts in `.cursor/hooks/` and configure them in `.cursor/ho
 - [x] 3-tier model: deny / ask / inform
 
 ---
+
+
 
 ### PETPLAT-003: Create Cursor rules, agents, and skills
 
@@ -133,6 +147,7 @@ Create safety hook scripts in `.cursor/hooks/` and configure them in `.cursor/ho
 Create file-pattern rules (`.cursor/rules/*.mdc`), read-only subagents (`.cursor/agents/`), and operational skills (`.cursor/skills/`) for the infrastructure workflow.
 
 **Rules** (`globs` + `alwaysApply: false`):
+
 - `terraform.mdc` — `terraform/**/*.tf`
 - `kubernetes.mdc` — `k8s/**/*.yaml`
 - `helm.mdc` — `helm/**`, `helm-values/**`
@@ -140,6 +155,7 @@ Create file-pattern rules (`.cursor/rules/*.mdc`), read-only subagents (`.cursor
 - `docs.mdc` — `docs/**/*.md`
 
 **Agents** (`readonly: true`):
+
 - `terraform-reviewer.md`
 - `k8s-validator.md`
 - `security-auditor.md`
@@ -148,16 +164,20 @@ Create file-pattern rules (`.cursor/rules/*.mdc`), read-only subagents (`.cursor
 - `pipeline-reviewer.md`
 
 **Skills:**
+
 - terraform-plan, terraform-apply, security-scan, deploy-dev, deploy-prod, smoke-test, logs, rollback (manual: `disable-model-invocation: true`)
 - review-terraform (auto-invocable)
 
 **Acceptance Criteria:**
+
 - [x] 5 `.mdc` rule files with `globs`
 - [x] 6 readonly agents with structured output
 - [x] 9 skill directories with SKILL.md
 - [x] Deploy-prod requires extra confirmation vs deploy-dev
 
 ---
+
+
 
 ### PETPLAT-004: Verify Cursor configuration end-to-end
 
@@ -172,6 +192,7 @@ Create file-pattern rules (`.cursor/rules/*.mdc`), read-only subagents (`.cursor
 Start a new Cursor Agent chat in petclinic-platform/ and verify the configuration: AGENTS.md loads, MCP servers connect after trust, skills are discoverable, hooks fire, rules activate on matching files.
 
 **Acceptance Criteria:**
+
 - [ ] AGENTS.md conventions visible in the agent context
 - [ ] Asking the agent to run `terraform destroy` is blocked by the hook
 - [ ] Editing a `.tf` file activates terraform rules
@@ -182,6 +203,8 @@ Start a new Cursor Agent chat in petclinic-platform/ and verify the configuratio
 
 ---
 
+
+
 # EPIC E-1: Foundation & Remote State
 
 **Priority:** P0
@@ -190,6 +213,8 @@ Start a new Cursor Agent chat in petclinic-platform/ and verify the configuratio
 **Blocks:** E-2, E-3, E-4, E-5, E-6, E-7
 
 ---
+
+
 
 ### PETPLAT-1: Create Terraform project directory structure
 
@@ -205,6 +230,7 @@ Create the Terraform directory structure in petclinic-platform with separate env
 **Technical Spec:** [General Project Parameters](./technical-spec.md#general-project-parameters), [Terraform Modules](./technical-spec.md#terraform-modules)
 
 **Acceptance Criteria:**
+
 - [ ] `terraform/environments/dev/` directory exists with main.tf, variables.tf, outputs.tf, backend.tf, terraform.tfvars
 - [ ] `terraform/environments/prod/` directory exists with same files
 - [ ] `terraform/modules/` directory exists with subdirectories: vpc, eks, ecr, rds, dns, secrets, observability
@@ -213,6 +239,8 @@ Create the Terraform directory structure in petclinic-platform with separate env
 - [ ] .terraform.lock.hcl is NOT in .gitignore (must be committed for reproducible builds)
 
 ---
+
+
 
 ### PETPLAT-2: Create S3 bucket and DynamoDB table for Terraform state
 
@@ -228,6 +256,7 @@ Create a bootstrap script that provisions the S3 bucket (versioning enabled, enc
 **Technical Spec:** [Terraform State Backend](./technical-spec.md#terraform-state-backend)
 
 **Acceptance Criteria:**
+
 - [ ] `scripts/bootstrap-state.sh` script created
 - [ ] S3 bucket created with versioning enabled
 - [ ] S3 bucket has server-side encryption (AES256 or KMS)
@@ -237,6 +266,8 @@ Create a bootstrap script that provisions the S3 bucket (versioning enabled, enc
 - [ ] Script accepts region as parameter (default: eu-central-1)
 
 ---
+
+
 
 ### PETPLAT-3: Configure Terraform backend for dev environment
 
@@ -253,6 +284,7 @@ Configure the S3 backend in `terraform/environments/dev/backend.tf` pointing to 
 **Technical Spec:** [Terraform State Backend](./technical-spec.md#terraform-state-backend)
 
 **Acceptance Criteria:**
+
 - [ ] `backend.tf` configured with S3 backend
 - [ ] State key: `petclinic/dev/terraform.tfstate`
 - [ ] DynamoDB table referenced for locking
@@ -261,6 +293,8 @@ Configure the S3 backend in `terraform/environments/dev/backend.tf` pointing to 
 - [ ] `terraform init` succeeds
 
 ---
+
+
 
 ### PETPLAT-4: Configure Terraform backend for prod environment
 
@@ -277,6 +311,7 @@ Configure the S3 backend in `terraform/environments/prod/backend.tf` with key `p
 **Technical Spec:** [Terraform State Backend](./technical-spec.md#terraform-state-backend)
 
 **Acceptance Criteria:**
+
 - [ ] `backend.tf` configured with S3 backend
 - [ ] State key: `petclinic/prod/terraform.tfstate`
 - [ ] DynamoDB table referenced for locking
@@ -284,6 +319,8 @@ Configure the S3 backend in `terraform/environments/prod/backend.tf` with key `p
 - [ ] `terraform init` succeeds
 
 ---
+
+
 
 ### PETPLAT-5: Configure AWS provider and Terraform versions
 
@@ -299,6 +336,7 @@ Set up provider configuration and version constraints in both environment root m
 **Technical Spec:** [General Project Parameters](./technical-spec.md#general-project-parameters)
 
 **Acceptance Criteria:**
+
 - [ ] `versions.tf` in both dev/ and prod/ with required_version >= 1.6.0
 - [ ] AWS provider source and version constraint (~> 6.0) defined
 - [ ] `providers.tf` in both environments configuring AWS provider with `var.aws_region`
@@ -310,14 +348,18 @@ Set up provider configuration and version constraints in both environment root m
 
 ---
 
+
+
 # EPIC E-2: Networking (VPC)
 
 **Priority:** P0
-**Description:** Build the VPC module with public subnets across multiple AZs, Internet Gateway, and baseline security groups. All-public subnet design (no NAT Gateway) to minimize student AWS costs — security groups enforce access control. See ADR-0001.
+**Description:** Build the VPC module with public and private subnets across multiple AZs, Internet Gateway, S3 gateway endpoint, and baseline security groups. Private nodes and RDS (ADR-0001). No NAT Gateway. NAT instance lives in the destroyable learning stack.
 **Blocked by:** E-1
 **Blocks:** E-3, E-5, E-6
 
 ---
+
+
 
 ### PETPLAT-6: Create VPC module — VPC, subnets, IGW
 
@@ -332,33 +374,57 @@ Set up provider configuration and version constraints in both environment root m
 Create a reusable VPC module in `terraform/modules/vpc/` that provisions:
 
 **Technical Spec:** [VPC Network Design](./technical-spec.md#vpc-network-design), [Terraform Modules](./technical-spec.md#terraform-modules)
+
 - VPC with configurable CIDR block
-- 2 public subnets across 2 AZs (for ALL resources: EKS nodes, RDS, ALB)
+- 2 public subnets (ALB, NAT instance) and 2 private subnets (EKS nodes, RDS) across 2 AZs
 - Internet Gateway attached to VPC
-- Single route table: all traffic via IGW
-- No NAT Gateway, no private subnets (cost optimization for learning — see ADR-0001)
-- Security groups are the primary access control mechanism
+- Public route table: `0.0.0.0/0` → IGW; private route table exists (NAT hop is added with the learning stack)
+- No NAT Gateway. S3 gateway VPC endpoint on private route tables (ADR-0001)
+- Security groups remain mandatory
 
 **Acceptance Criteria:**
+
 - [ ] Module in `terraform/modules/vpc/` with main.tf, variables.tf, outputs.tf
 - [ ] VPC created with DNS support and DNS hostnames enabled
 - [ ] 2 public subnets with `map_public_ip_on_launch = true`
+- [ ] 2 private subnets with `map_public_ip_on_launch = false`
 - [ ] Subnets spread across 2 AZs
 - [ ] Internet Gateway attached
-- [ ] Route table: 0.0.0.0/0 → IGW
-- [ ] No NAT Gateway (intentional — cost saving for students)
-- [ ] Subnets tagged for EKS: `kubernetes.io/cluster/petclinic-{env}` = shared, `kubernetes.io/role/elb` = 1
+- [ ] Public route table: 0.0.0.0/0 → IGW
+- [ ] No NAT Gateway (intentional)
+- [ ] S3 gateway endpoint on private route tables
+- [ ] Public subnets tagged `kubernetes.io/role/elb = 1`; private tagged `kubernetes.io/role/internal-elb = 1`; both `kubernetes.io/cluster/petclinic-{env} = shared`
 - [ ] All resources tagged with Project, Environment, ManagedBy
-- [ ] Outputs: vpc_id, subnet_ids
+- [ ] Outputs: vpc_id, public_subnet_ids, private_subnet_ids
 - [ ] `terraform validate` passes
 
 ---
 
-### ~~PETPLAT-7: REMOVED — VPC endpoints not needed~~
 
-_VPC endpoints were needed to avoid NAT Gateway costs for private subnets. With all-public subnet design, nodes access ECR/S3/Secrets Manager directly via IGW. No VPC endpoints required — saves ~$22-65/mo._
+
+### PETPLAT-7: S3 gateway VPC endpoint (no interface VPCEs)
+
+**Type:** Story
+**Priority:** P0
+**Epic:** E-2 Networking
+**Story Points:** 2
+**Labels:** terraform, networking, vpc
+**Blocked by:** PETPLAT-6
+
+**Description:**
+Reopened by ADR-0001 as **S3 gateway only**. Private nodes pull ECR layers and other S3 traffic without NAT. Do **not** add interface endpoints for ECR, STS, Secrets Manager, or SSM (those stay on NAT during a session).
+
+**Technical Spec:** [VPC Network Design](./technical-spec.md#vpc-network-design)
+
+**Acceptance Criteria:**
+
+- [ ] S3 gateway VPC endpoint on private route tables
+- [ ] No interface VPC endpoints
+- [ ] `terraform validate` passes
 
 ---
+
+
 
 ### PETPLAT-8: Create baseline security groups
 
@@ -373,24 +439,30 @@ _VPC endpoints were needed to avoid NAT Gateway costs for private subnets. With 
 Create baseline security groups within the VPC module or as a separate section:
 
 **Technical Spec:** [Security Groups](./technical-spec.md#security-groups)
+
 - EKS cluster security group (control plane)
 - EKS node security group (worker nodes)
 - RDS security group (MySQL port 3306, only from EKS nodes)
 - ALB security group (HTTP/HTTPS from internet)
+- NAT instance security group (ingress from VPC CIDR only, no SSH)
 
-Security groups are the **primary access control boundary** in this all-public subnet design. They must be as restrictive as a traditional private subnet setup.
+Security groups remain mandatory. Private subnets are an extra layer (ADR-0001). Operator host access is SSM, not SSH.
 
 **Acceptance Criteria:**
+
 - [ ] EKS cluster SG: allows 443 from node SG
 - [ ] EKS node SG: allows all traffic from cluster SG, allows all traffic from other nodes (self-reference)
 - [ ] RDS SG: allows 3306 from EKS node SG only (NOT 0.0.0.0/0)
 - [ ] ALB SG: allows 80 and 443 from 0.0.0.0/0 (public-facing)
+- [ ] NAT instance SG: ingress from VPC CIDR, egress 0.0.0.0/0, no SSH :22
 - [ ] All SGs have descriptive names and tags
-- [ ] No overly permissive rules — SGs are the perimeter, treat them like firewall rules
+- [ ] No overly permissive rules
 - [ ] Outputs: all security group IDs
 - [ ] `terraform validate` passes
 
 ---
+
+
 
 ### PETPLAT-9: Wire VPC module into dev environment
 
@@ -407,12 +479,15 @@ Call the VPC module from `terraform/environments/dev/main.tf` with dev-appropria
 **Technical Spec:** [VPC Network Design](./technical-spec.md#vpc-network-design)
 
 **Acceptance Criteria:**
+
 - [ ] VPC module called in dev main.tf
 - [ ] VPC CIDR: 10.0.0.0/16
-- [ ] `terraform plan` shows expected resources (VPC, 2 subnets, IGW, route table, SGs)
+- [ ] `terraform plan` shows expected resources (VPC, 4 subnets, IGW, public/private route tables, S3 gateway, SGs)
 - [ ] `terraform apply` succeeds and creates the VPC
 
 ---
+
+
 
 ### PETPLAT-10: Wire VPC module into prod environment
 
@@ -429,11 +504,14 @@ Call the VPC module from `terraform/environments/prod/main.tf` with prod-appropr
 **Technical Spec:** [VPC Network Design](./technical-spec.md#vpc-network-design)
 
 **Acceptance Criteria:**
+
 - [ ] VPC module called in prod main.tf
 - [ ] VPC CIDR: 10.1.0.0/16 (non-overlapping with dev)
 - [ ] `terraform plan` shows expected resources
 
 ---
+
+
 
 ### PETPLAT-11: Deploy and verify dev VPC
 
@@ -450,15 +528,19 @@ Run `terraform apply` for the dev environment and verify the VPC is created corr
 **Technical Spec:** [VPC Network Design](./technical-spec.md#vpc-network-design)
 
 **Acceptance Criteria:**
+
 - [ ] `terraform apply` succeeds without errors
 - [ ] VPC visible in AWS Console with correct CIDR
-- [ ] 2 public subnets visible across 2 AZs
-- [ ] No NAT Gateway (intentional cost saving)
-- [ ] Route table: 0.0.0.0/0 → IGW
-- [ ] Subnets tagged for EKS
+- [ ] 2 public and 2 private subnets visible across 2 AZs
+- [ ] No NAT Gateway (NAT instance is the learning stack, not this apply)
+- [ ] Public route table: 0.0.0.0/0 → IGW
+- [ ] S3 gateway endpoint present
+- [ ] Subnets tagged for EKS (elb on public, internal-elb on private)
 - [ ] State file updated in S3
 
 ---
+
+
 
 # EPIC E-3: EKS Cluster
 
@@ -468,6 +550,8 @@ Run `terraform apply` for the dev environment and verify the VPC is created corr
 **Blocks:** E-8, E-9, E-10, E-11
 
 ---
+
+
 
 ### PETPLAT-12: Create EKS module — cluster and IAM roles
 
@@ -482,18 +566,20 @@ Run `terraform apply` for the dev environment and verify the VPC is created corr
 Create the EKS module in `terraform/modules/eks/` that provisions:
 
 **Technical Spec:** [EKS Cluster](./technical-spec.md#eks-cluster), [Terraform Modules](./technical-spec.md#terraform-modules)
+
 - EKS cluster with Kubernetes version **1.35** (standard support), auth mode `API`, `upgrade_policy.support_type = STANDARD`
 - Cluster IAM role with AmazonEKSClusterPolicy
 - OIDC provider for IRSA (IAM Roles for Service Accounts)
-- Cluster placed in public subnets (all-public design, see ADR-0001)
-- API server endpoint access: public (CIDR-restricted where possible)
+- Cluster / nodes in **private** subnets (ADR-0001); public subnets tagged for ALB
+- API server endpoint access: public+private, CIDR-restricted to operator `/32`
 
 **Acceptance Criteria:**
+
 - [ ] Module in `terraform/modules/eks/`
 - [ ] EKS cluster created with specified K8s version
 - [ ] Cluster IAM role with AmazonEKSClusterPolicy attached
 - [ ] OIDC provider created from cluster identity issuer
-- [ ] Cluster uses public subnets
+- [ ] Cluster uses private subnets (public subnets remain for ALB)
 - [ ] Cluster security group attached
 - [ ] Cluster logging enabled (api, audit, authenticator)
 - [ ] Public API CIDR-restricted via `api_allowed_cidrs` (operator /32) — never 0.0.0.0/0
@@ -501,6 +587,8 @@ Create the EKS module in `terraform/modules/eks/` that provisions:
 - [ ] `terraform validate` passes
 
 ---
+
+
 
 ### PETPLAT-13: Add managed node group to EKS module
 
@@ -515,19 +603,21 @@ Create the EKS module in `terraform/modules/eks/` that provisions:
 Add a managed node group configuration to the EKS module:
 
 **Technical Spec:** [EKS Cluster](./technical-spec.md#eks-cluster)
-- Node IAM role with required policies (EKSWorkerNodePolicy, EKS_CNI_Policy, EC2ContainerRegistryReadOnly)
+
+- Node IAM role with required policies (EKSWorkerNodePolicy, EKS_CNI_Policy, EC2ContainerRegistryReadOnly, **SSMManagedInstanceCore**)
 - Configurable instance types, min/max/desired sizes
-- Nodes in public subnets (all-public design)
+- Nodes in **private** subnets (ADR-0001)
 - Node labels and taints support
 
 **Acceptance Criteria:**
+
 - [ ] Managed node group resource created
-- [ ] Node IAM role with AmazonEKSWorkerNodePolicy, AmazonEKS_CNI_Policy, AmazonEC2ContainerRegistryReadOnly
+- [ ] Node IAM role with AmazonEKSWorkerNodePolicy, AmazonEKS_CNI_Policy, AmazonEC2ContainerRegistryReadOnly, AmazonSSMManagedInstanceCore
 - [ ] Instance types configurable (default: ["t4g.small"] for ARM/Graviton)
 - [ ] AMI type `AL2023_ARM_64_STANDARD`
 - [ ] Launch template with IMDSv2 `http_tokens = required` and `http_put_response_hop_limit = 1`
 - [ ] Scaling config: min_size, max_size, desired_size as variables
-- [ ] Nodes launched in public subnets
+- [ ] Nodes launched in private subnets
 - [ ] Disk size configurable (default: 20 GB gp3)
 - [ ] Node security group attached
 - [ ] Labels: environment, managed-by
@@ -535,6 +625,8 @@ Add a managed node group configuration to the EKS module:
 - [ ] `terraform validate` passes
 
 ---
+
+
 
 ### PETPLAT-14: Create kubectl access configuration
 
@@ -551,12 +643,15 @@ Add an EKS Access Entry for the deploying IAM principal (`authentication_mode = 
 **Technical Spec:** [EKS Cluster](./technical-spec.md#eks-cluster)
 
 **Acceptance Criteria:**
+
 - [ ] EKS access entry configured for the deploying IAM principal
 - [ ] Output: kubeconfig update command (`aws eks update-kubeconfig --name <cluster> --region <region>`)
 - [ ] After apply, `kubectl get nodes` works
 - [ ] Documentation: how to add additional users/roles
 
 ---
+
+
 
 ### PETPLAT-15: Wire EKS module into dev environment
 
@@ -573,6 +668,7 @@ Call the EKS module from dev environment with dev-appropriate sizing.
 **Technical Spec:** [EKS Cluster](./technical-spec.md#eks-cluster)
 
 **Acceptance Criteria:**
+
 - [ ] EKS module called in dev main.tf
 - [ ] Cluster name: petclinic-dev
 - [ ] Node group: t4g.small (ARM/Graviton free trial), min=2, max=4, desired=2
@@ -581,6 +677,8 @@ Call the EKS module from dev environment with dev-appropriate sizing.
 - [ ] `terraform plan` shows expected resources
 
 ---
+
+
 
 ### PETPLAT-16: Deploy and verify dev EKS cluster
 
@@ -597,6 +695,7 @@ Run `terraform apply` and verify the EKS cluster is operational.
 **Technical Spec:** [EKS Cluster](./technical-spec.md#eks-cluster)
 
 **Acceptance Criteria:**
+
 - [ ] `terraform apply` succeeds
 - [ ] Cluster status: ACTIVE
 - [ ] Nodes visible: `kubectl get nodes` shows 2 Ready nodes
@@ -604,6 +703,8 @@ Run `terraform apply` and verify the EKS cluster is operational.
 - [ ] CoreDNS and kube-proxy running: `kubectl get pods -n kube-system`
 
 ---
+
+
 
 ### PETPLAT-17: Wire EKS module into prod environment
 
@@ -620,12 +721,15 @@ Call the EKS module from prod environment with prod-appropriate sizing.
 **Technical Spec:** [EKS Cluster](./technical-spec.md#eks-cluster)
 
 **Acceptance Criteria:**
+
 - [ ] Cluster name: petclinic-prod
 - [ ] Node group: t4g.small (ARM/Graviton free trial), min=2, max=4, desired=2
 - [ ] VPC and subnet IDs from prod VPC module
 - [ ] `terraform plan` shows expected resources
 
 ---
+
+
 
 # EPIC E-4: Container Registry (ECR)
 
@@ -635,6 +739,8 @@ Call the EKS module from prod environment with prod-appropriate sizing.
 **Blocks:** E-10, E-17
 
 ---
+
+
 
 ### PETPLAT-18: Create ECR module
 
@@ -651,6 +757,7 @@ Create the ECR module in `terraform/modules/ecr/` that provisions one ECR privat
 **Technical Spec:** [ECR Container Registry](./technical-spec.md#ecr-container-registry), [Terraform Modules](./technical-spec.md#terraform-modules)
 
 **Acceptance Criteria:**
+
 - [ ] Module in `terraform/modules/ecr/`
 - [ ] Uses `aws_ecr_repository` resource
 - [ ] Accepts `service_names` list variable and `environment` variable
@@ -662,6 +769,8 @@ Create the ECR module in `terraform/modules/ecr/` that provisions one ECR privat
 - [ ] `terraform validate` passes
 
 ---
+
+
 
 ### PETPLAT-19: Add lifecycle policy and tag immutability configuration
 
@@ -678,6 +787,7 @@ Configure ECR lifecycle policies to automatically clean up old images and manage
 **Technical Spec:** [ECR Container Registry](./technical-spec.md#ecr-container-registry)
 
 **Acceptance Criteria:**
+
 - [ ] Lifecycle policy JSON: keep last 10 tagged images, expire untagged after 7 days
 - [ ] `aws_ecr_lifecycle_policy` resource attached to each repository
 - [ ] Tag immutability: `MUTABLE` for dev, `IMMUTABLE` for prod (variable-driven)
@@ -685,6 +795,8 @@ Configure ECR lifecycle policies to automatically clean up old images and manage
 - [ ] `terraform validate` passes
 
 ---
+
+
 
 ### PETPLAT-20: Wire ECR module into dev environment and deploy
 
@@ -701,6 +813,7 @@ Call the ECR module from dev environment with all 8 service names and deploy. EC
 **Technical Spec:** [ECR Container Registry](./technical-spec.md#ecr-container-registry)
 
 **Acceptance Criteria:**
+
 - [ ] ECR module called with service_names: [config-server, discovery-server, api-gateway, customers-service, visits-service, vets-service, genai-service, admin-server]
 - [ ] `terraform apply` succeeds
 - [ ] 8 ECR repositories visible in eu-central-1 under `petclinic-dev/` prefix
@@ -708,6 +821,8 @@ Call the ECR module from dev environment with all 8 service names and deploy. EC
 - [ ] Scan-on-push enabled on all repos
 
 ---
+
+
 
 ### PETPLAT-21: Create ECR login helper script
 
@@ -724,12 +839,15 @@ Create `scripts/ecr-login.sh` that authenticates Docker to the ECR private regis
 **Technical Spec:** [ECR Container Registry](./technical-spec.md#ecr-container-registry)
 
 **Acceptance Criteria:**
+
 - [ ] Script at `scripts/ecr-login.sh`
 - [ ] Uses `aws ecr get-login-password --region eu-central-1` and pipes to `docker login {account}.dkr.ecr.eu-central-1.amazonaws.com`
 - [ ] Works on macOS and Linux
 - [ ] Accepts optional `--region` parameter (defaults to eu-central-1)
 
 ---
+
+
 
 # EPIC E-5: Database (RDS MySQL)
 
@@ -739,6 +857,8 @@ Create `scripts/ecr-login.sh` that authenticates Docker to the ECR private regis
 **Blocks:** E-7, E-8
 
 ---
+
+
 
 ### PETPLAT-22: Create RDS module
 
@@ -755,6 +875,7 @@ Create the RDS module in `terraform/modules/rds/` for a MySQL instance.
 **Technical Spec:** [RDS Database](./technical-spec.md#rds-database), [Terraform Modules](./technical-spec.md#terraform-modules)
 
 **Acceptance Criteria:**
+
 - [ ] Module in `terraform/modules/rds/`
 - [ ] RDS MySQL 8.4 instance (single shared `petclinic` database for all 3 domain services)
 - [ ] DB subnet group using the VPC subnets
@@ -772,6 +893,8 @@ Create the RDS module in `terraform/modules/rds/` for a MySQL instance.
 
 ---
 
+
+
 ### PETPLAT-23: Create database credentials in Secrets Manager
 
 **Type:** Story
@@ -787,6 +910,7 @@ Store the RDS master credentials in AWS Secrets Manager via Terraform. Generate 
 **Technical Spec:** [RDS Database](./technical-spec.md#rds-database), [Secrets Management](./technical-spec.md#secrets-management)
 
 **Acceptance Criteria:**
+
 - [ ] Random password generated using `random_password` resource (16+ chars, special chars)
 - [ ] Secrets created using `aws_secretsmanager_secret` and `aws_secretsmanager_secret_version` resources
 - [ ] Secret name: `petclinic/{env}/rds-credentials` (single JSON secret with `username` and `password` keys)
@@ -796,6 +920,8 @@ Store the RDS master credentials in AWS Secrets Manager via Terraform. Generate 
 - [ ] `terraform validate` passes
 
 ---
+
+
 
 ### PETPLAT-24: Create database initialization strategy
 
@@ -812,6 +938,7 @@ Document and implement how the shared `petclinic` MySQL database gets its schema
 **Technical Spec:** [RDS Database](./technical-spec.md#rds-database)
 
 **Acceptance Criteria:**
+
 - [ ] Strategy documented: which approach is used (Spring auto-init vs manual)
 - [ ] One shared `petclinic` database created (all 3 services use the same DB — confirmed by cross-service FK: `visits.pet_id` → `pets.id`)
 - [ ] Schema scripts identified: customers (owners, pets, types), visits (visits), vets (vets, specialties, vet_specialties)
@@ -819,6 +946,8 @@ Document and implement how the shared `petclinic` MySQL database gets its schema
 - [ ] Tested: services can connect and tables exist
 
 ---
+
+
 
 ### PETPLAT-25: Wire RDS module into dev environment
 
@@ -835,6 +964,7 @@ Call the RDS module from dev environment.
 **Technical Spec:** [RDS Database](./technical-spec.md#rds-database)
 
 **Acceptance Criteria:**
+
 - [ ] RDS module called in dev main.tf
 - [ ] Instance class: db.t4g.micro (free tier)
 - [ ] Multi-AZ: false
@@ -844,6 +974,8 @@ Call the RDS module from dev environment.
 - [ ] `terraform plan` shows expected resources
 
 ---
+
+
 
 ### PETPLAT-26: Deploy and verify dev RDS
 
@@ -860,6 +992,7 @@ Deploy RDS to dev and verify connectivity from EKS pod.
 **Technical Spec:** [RDS Database](./technical-spec.md#rds-database)
 
 **Acceptance Criteria:**
+
 - [ ] `terraform apply` succeeds
 - [ ] RDS instance status: available
 - [ ] Endpoint accessible from EKS node (test via debug pod: `kubectl run`)
@@ -867,6 +1000,8 @@ Deploy RDS to dev and verify connectivity from EKS pod.
 - [ ] Secrets stored correctly in Secrets Manager (`petclinic/{env}/rds-credentials`)
 
 ---
+
+
 
 ### PETPLAT-27: Wire RDS module into prod environment
 
@@ -883,6 +1018,7 @@ Call the RDS module from prod environment with prod-appropriate config.
 **Technical Spec:** [RDS Database](./technical-spec.md#rds-database)
 
 **Acceptance Criteria:**
+
 - [ ] Instance class: db.t4g.micro (free tier, same as dev — cost optimization for learning)
 - [ ] Multi-AZ: false (single-AZ to save cost; note: in real production, enable Multi-AZ)
 - [ ] Skip final snapshot: false
@@ -890,6 +1026,8 @@ Call the RDS module from prod environment with prod-appropriate config.
 - [ ] `terraform plan` shows expected resources
 
 ---
+
+
 
 # EPIC E-6: DNS & Ingress
 
@@ -899,6 +1037,8 @@ Call the RDS module from prod environment with prod-appropriate config.
 **Blocks:** E-8 (ingress manifests)
 
 ---
+
+
 
 ### PETPLAT-28: Create DNS module — Route 53 hosted zone
 
@@ -915,6 +1055,7 @@ Create the DNS module in `terraform/modules/dns/` with Route 53 hosted zone and 
 **Technical Spec:** [DNS and Ingress](./technical-spec.md#dns-and-ingress), [Terraform Modules](./technical-spec.md#terraform-modules)
 
 **Acceptance Criteria:**
+
 - [ ] Module in `terraform/modules/dns/`
 - [ ] Route 53 hosted zone created (domain name as variable)
 - [ ] ACM certificate requested with DNS validation
@@ -924,6 +1065,8 @@ Create the DNS module in `terraform/modules/dns/` with Route 53 hosted zone and 
 - [ ] `terraform validate` passes
 
 ---
+
+
 
 ### PETPLAT-29: Install AWS Load Balancer Controller on EKS
 
@@ -940,6 +1083,7 @@ Install the AWS Load Balancer Controller on EKS using Helm (`aws-load-balancer-c
 **Technical Spec:** [DNS and Ingress](./technical-spec.md#dns-and-ingress), [IRSA Roles](./technical-spec.md#irsa-roles)
 
 **Acceptance Criteria:**
+
 - [ ] IAM policy for the LB controller created
 - [ ] IAM role for service account (IRSA) created using OIDC provider
 - [ ] Helm chart values file or install command generated for the LB controller
@@ -949,6 +1093,8 @@ Install the AWS Load Balancer Controller on EKS using Helm (`aws-load-balancer-c
 - [ ] Verified: controller can create ALBs (test with a simple Ingress)
 
 ---
+
+
 
 ### PETPLAT-30: Create Ingress manifest for API Gateway
 
@@ -965,6 +1111,7 @@ Create the K8s Ingress resource that routes external HTTPS traffic to the API Ga
 **Technical Spec:** [DNS and Ingress](./technical-spec.md#dns-and-ingress)
 
 **Acceptance Criteria:**
+
 - [ ] Ingress manifest at `k8s/base/ingress/ingress.yaml`
 - [ ] Uses `alb` IngressClass
 - [ ] Annotations for internet-facing ALB, HTTPS redirect, ACM certificate ARN
@@ -973,6 +1120,8 @@ Create the K8s Ingress resource that routes external HTTPS traffic to the API Ga
 - [ ] ALB created and accessible after applying
 
 ---
+
+
 
 ### PETPLAT-31: Create DNS record pointing to ALB
 
@@ -989,12 +1138,15 @@ Create a Route 53 A record (alias) pointing the domain to the ALB created by the
 **Technical Spec:** [DNS and Ingress](./technical-spec.md#dns-and-ingress)
 
 **Acceptance Criteria:**
+
 - [ ] Route 53 alias record created (e.g., petclinic-dev.example.com → ALB)
 - [ ] Record type: A with alias to ALB
 - [ ] App accessible via domain name over HTTPS
 - [ ] HTTP redirects to HTTPS
 
 ---
+
+
 
 ### PETPLAT-32: Wire DNS module into dev environment
 
@@ -1011,12 +1163,15 @@ Call the DNS module from the dev environment.
 **Technical Spec:** [DNS and Ingress](./technical-spec.md#dns-and-ingress)
 
 **Acceptance Criteria:**
+
 - [ ] DNS module called in dev main.tf
 - [ ] Domain configured
 - [ ] ACM certificate created and validated
 - [ ] `terraform plan` shows expected resources
 
 ---
+
+
 
 # EPIC E-7: Secrets Management (Secrets Manager)
 
@@ -1026,6 +1181,8 @@ Call the DNS module from the dev environment.
 **Blocks:** E-8
 
 ---
+
+
 
 ### PETPLAT-33: Create Secrets Manager Terraform resources (non-RDS secrets)
 
@@ -1042,6 +1199,7 @@ Create the secrets module in `terraform/modules/secrets/` to manage **non-RDS** 
 **Technical Spec:** [Secrets Management](./technical-spec.md#secrets-management), [Terraform Modules](./technical-spec.md#terraform-modules)
 
 **Acceptance Criteria:**
+
 - [ ] Module in `terraform/modules/secrets/`
 - [ ] Secrets created using `aws_secretsmanager_secret` and `aws_secretsmanager_secret_version` resources
 - [ ] Secrets created: `petclinic/{env}/openai-api-key`
@@ -1052,6 +1210,8 @@ Create the secrets module in `terraform/modules/secrets/` to manage **non-RDS** 
 - [ ] `terraform validate` passes
 
 ---
+
+
 
 ### PETPLAT-34: Install External Secrets Operator on EKS
 
@@ -1068,6 +1228,7 @@ Install External Secrets Operator (ESO) on the EKS cluster. ESO will sync secret
 **Technical Spec:** [Secrets Management](./technical-spec.md#secrets-management), [IRSA Roles](./technical-spec.md#irsa-roles)
 
 **Acceptance Criteria:**
+
 - [ ] ESO installed via kubectl apply (CRDs + controller)
 - [ ] ESO pods running in `external-secrets` namespace
 - [ ] IAM role for service account (IRSA) created with Secrets Manager read permissions (`secretsmanager:GetSecretValue`, `secretsmanager:DescribeSecret`)
@@ -1076,6 +1237,8 @@ Install External Secrets Operator (ESO) on the EKS cluster. ESO will sync secret
 - [ ] Documented: how to add new secrets
 
 ---
+
+
 
 ### PETPLAT-35: Create ExternalSecret for RDS credentials
 
@@ -1092,6 +1255,7 @@ Create ExternalSecret resource that syncs RDS credentials from Secrets Manager i
 **Technical Spec:** [Secrets Management](./technical-spec.md#secrets-management)
 
 **Acceptance Criteria:**
+
 - [ ] ExternalSecret manifest at `k8s/base/external-secrets/rds-credentials.yaml`
 - [ ] References Secrets Manager secret: `petclinic/{env}/rds-credentials` (single JSON secret)
 - [ ] Uses `remoteRef.key` with `remoteRef.property` to extract `username` and `password` from JSON
@@ -1101,6 +1265,8 @@ Create ExternalSecret resource that syncs RDS credentials from Secrets Manager i
 - [ ] Verified: `kubectl get secret` shows the created secret
 
 ---
+
+
 
 ### PETPLAT-36: Create ExternalSecret for OpenAI API key
 
@@ -1117,12 +1283,15 @@ Create ExternalSecret for the GenAI service's OpenAI API key from Secrets Manage
 **Technical Spec:** [Secrets Management](./technical-spec.md#secrets-management)
 
 **Acceptance Criteria:**
+
 - [ ] ExternalSecret manifest at `k8s/base/external-secrets/openai-api-key.yaml`
 - [ ] References Secrets Manager secret: `petclinic/{env}/openai-api-key`
 - [ ] Creates K8s Secret with key: `OPENAI_API_KEY`
 - [ ] Verified: secret created in K8s
 
 ---
+
+
 
 ### PETPLAT-37: Create IRSA role for External Secrets Operator
 
@@ -1139,6 +1308,7 @@ Create an IAM role with a trust policy for the ESO service account (IRSA) with p
 **Technical Spec:** [IRSA Roles](./technical-spec.md#irsa-roles)
 
 **Acceptance Criteria:**
+
 - [ ] IAM role created with OIDC trust policy for the ESO service account
 - [ ] Policy: `secretsmanager:GetSecretValue`, `secretsmanager:DescribeSecret` on `arn:aws:secretsmanager:*:*:secret:petclinic/*`
 - [ ] Policy: `kms:Decrypt` for encrypted secrets (if using custom KMS key)
@@ -1146,6 +1316,8 @@ Create an IAM role with a trust policy for the ESO service account (IRSA) with p
 - [ ] `terraform validate` passes
 
 ---
+
+
 
 # EPIC E-8: Kubernetes Manifests — Base
 
@@ -1155,6 +1327,8 @@ Create an IAM role with a trust policy for the ESO service account (IRSA) with p
 **Blocks:** E-9, E-10, E-11
 
 ---
+
+
 
 ### PETPLAT-38: Create K8s namespaces manifest
 
@@ -1171,11 +1345,14 @@ Create namespace definitions for dev and prod.
 **Technical Spec:** [Kubernetes Manifests](./technical-spec.md#kubernetes-manifests)
 
 **Acceptance Criteria:**
+
 - [ ] `k8s/base/namespaces.yaml` with petclinic-dev and petclinic-prod namespaces
 - [ ] Namespaces labeled: app.kubernetes.io/part-of=petclinic, environment={dev,prod}
 - [ ] `kubectl apply --dry-run=client` passes
 
 ---
+
+
 
 ### PETPLAT-39: Create Config Server K8s manifests
 
@@ -1192,6 +1369,7 @@ Config Server must deploy first. All other services depend on it.
 **Technical Spec:** [Application Services](./technical-spec.md#application-services), [Kubernetes Manifests](./technical-spec.md#kubernetes-manifests)
 
 **Acceptance Criteria:**
+
 - [ ] `k8s/base/config-server/deployment.yaml` — 1 replica, port 8888, SPRING_PROFILES_ACTIVE=docker
 - [ ] `k8s/base/config-server/service.yaml` — ClusterIP, port 8888
 - [ ] `k8s/base/config-server/configmap.yaml` — GIT_REPO URL for config
@@ -1204,6 +1382,8 @@ Config Server must deploy first. All other services depend on it.
 - [ ] `kubectl apply --dry-run=client` passes
 
 ---
+
+
 
 ### PETPLAT-40: Create Discovery Server K8s manifests
 
@@ -1220,7 +1400,8 @@ Discovery Server (Eureka) depends on Config Server. Must be running before domai
 **Technical Spec:** [Application Services](./technical-spec.md#application-services), [Kubernetes Manifests](./technical-spec.md#kubernetes-manifests)
 
 **Acceptance Criteria:**
-- [ ] `k8s/base/discovery-server/deployment.yaml` — port 8761, env: CONFIG_SERVER_URL=http://config-server:8888
+
+- [ ] `k8s/base/discovery-server/deployment.yaml` — port 8761, env: CONFIG_SERVER_URL=[http://config-server:8888](http://config-server:8888)
 - [ ] `k8s/base/discovery-server/service.yaml` — ClusterIP, port 8761
 - [ ] Init container or readiness dependency on Config Server
 - [ ] Probes: readiness and liveness on /actuator/health endpoints
@@ -1228,6 +1409,8 @@ Discovery Server (Eureka) depends on Config Server. Must be running before domai
 - [ ] `kubectl apply --dry-run=client` passes
 
 ---
+
+
 
 ### PETPLAT-41: Create domain services K8s manifests (customers, visits, vets)
 
@@ -1244,6 +1427,7 @@ Create manifests for the three database-backed services. They need MySQL connect
 **Technical Spec:** [Application Services](./technical-spec.md#application-services), [Kubernetes Manifests](./technical-spec.md#kubernetes-manifests), [RDS Database](./technical-spec.md#rds-database)
 
 **Acceptance Criteria:**
+
 - [ ] Manifests for customers-service (port 8081), visits-service (port 8082), vets-service (port 8083)
 - [ ] Each: Deployment, Service (ClusterIP), ConfigMap, ServiceAccount
 - [ ] Spring profile: `docker,mysql` (activates MySQL instead of HSQLDB)
@@ -1255,6 +1439,8 @@ Create manifests for the three database-backed services. They need MySQL connect
 - [ ] `kubectl apply --dry-run=client` passes for all three
 
 ---
+
+
 
 ### PETPLAT-42: Create GenAI Service K8s manifests
 
@@ -1271,6 +1457,7 @@ GenAI service needs the OpenAI API key from Secrets Manager (synced to K8s Secre
 **Technical Spec:** [Application Services](./technical-spec.md#application-services), [Kubernetes Manifests](./technical-spec.md#kubernetes-manifests)
 
 **Acceptance Criteria:**
+
 - [ ] `k8s/base/genai-service/` — Deployment (port 8084), Service, ServiceAccount
 - [ ] OPENAI_API_KEY from K8s secret (synced by ESO)
 - [ ] CONFIG_SERVER_URL env var
@@ -1279,6 +1466,8 @@ GenAI service needs the OpenAI API key from Secrets Manager (synced to K8s Secre
 - [ ] `kubectl apply --dry-run=client` passes
 
 ---
+
+
 
 ### PETPLAT-43: Create API Gateway K8s manifests
 
@@ -1295,6 +1484,7 @@ API Gateway routes traffic to all domain services and serves the frontend. This 
 **Technical Spec:** [Application Services](./technical-spec.md#application-services), [Kubernetes Manifests](./technical-spec.md#kubernetes-manifests)
 
 **Acceptance Criteria:**
+
 - [ ] `k8s/base/api-gateway/` — Deployment (port 8080), Service (ClusterIP), ServiceAccount
 - [ ] CONFIG_SERVER_URL and DISCOVERY_SERVER_URL env vars
 - [ ] Probes: readiness and liveness
@@ -1303,6 +1493,8 @@ API Gateway routes traffic to all domain services and serves the frontend. This 
 - [ ] `kubectl apply --dry-run=client` passes
 
 ---
+
+
 
 ### PETPLAT-44: Create Admin Server K8s manifests
 
@@ -1319,6 +1511,7 @@ Spring Boot Admin for monitoring all services.
 **Technical Spec:** [Application Services](./technical-spec.md#application-services), [Kubernetes Manifests](./technical-spec.md#kubernetes-manifests)
 
 **Acceptance Criteria:**
+
 - [ ] `k8s/base/admin-server/` — Deployment (port 9090), Service, ServiceAccount
 - [ ] CONFIG_SERVER_URL env var
 - [ ] Probes on /actuator/health endpoints
@@ -1326,6 +1519,8 @@ Spring Boot Admin for monitoring all services.
 - [ ] `kubectl apply --dry-run=client` passes
 
 ---
+
+
 
 # EPIC E-9: Kubernetes Manifests — Overlays
 
@@ -1335,6 +1530,8 @@ Spring Boot Admin for monitoring all services.
 **Blocks:** E-14, E-16
 
 ---
+
+
 
 ### PETPLAT-45: Create dev overlay patches
 
@@ -1351,6 +1548,7 @@ Define dev environment settings that patch base manifests for the dev environmen
 **Technical Spec:** [Kubernetes Overlays](./technical-spec.md#kubernetes-overlays), [Helm Charts](./technical-spec.md#helm-charts)
 
 **Acceptance Criteria:**
+
 - [ ] Dev environment settings defined (to be expressed as Helm values)
 - [ ] All services: 1 replica
 - [ ] Resource limits appropriate for dev (can be smaller)
@@ -1359,6 +1557,8 @@ Define dev environment settings that patch base manifests for the dev environmen
 - [ ] Settings documented for translation into `helm-values/dev.yaml` (E-16)
 
 ---
+
+
 
 ### PETPLAT-46: Create prod overlay patches
 
@@ -1375,6 +1575,7 @@ Define prod environment settings with production-appropriate configuration. Thes
 **Technical Spec:** [Kubernetes Overlays](./technical-spec.md#kubernetes-overlays), [Helm Charts](./technical-spec.md#helm-charts)
 
 **Acceptance Criteria:**
+
 - [ ] Prod environment settings defined (to be expressed as Helm values)
 - [ ] Domain services: 2 replicas minimum
 - [ ] Infrastructure services (config, discovery): 2 replicas for HA
@@ -1385,6 +1586,8 @@ Define prod environment settings with production-appropriate configuration. Thes
 - [ ] Settings documented for translation into `helm-values/prod.yaml` (E-16)
 
 ---
+
+
 
 ### PETPLAT-47: Add Horizontal Pod Autoscaler for prod
 
@@ -1401,6 +1604,7 @@ Add HPA resources in prod overlay for stateless services.
 **Technical Spec:** [Kubernetes Overlays](./technical-spec.md#kubernetes-overlays)
 
 **Acceptance Criteria:**
+
 - [ ] HPA for api-gateway: min=2, max=6, target CPU=70%
 - [ ] HPA for customers, visits, vets: min=2, max=4, target CPU=70%
 - [ ] HPA for genai-service: min=1, max=3, target CPU=70%
@@ -1408,6 +1612,8 @@ Add HPA resources in prod overlay for stateless services.
 - [ ] `kubectl apply --dry-run=client` passes
 
 ---
+
+
 
 ### PETPLAT-48: Deploy all services to dev namespace and verify
 
@@ -1424,6 +1630,7 @@ Deploy all 8 services to dev namespace and verify the full application is workin
 **Technical Spec:** [Application Services](./technical-spec.md#application-services), [Kubernetes Overlays](./technical-spec.md#kubernetes-overlays), [Helm Charts](./technical-spec.md#helm-charts)
 
 **Acceptance Criteria:**
+
 - [ ] All 8 deployments running in petclinic-dev namespace
 - [ ] All pods in Ready state
 - [ ] Config Server healthy: `curl config-server:8888/actuator/health`
@@ -1435,6 +1642,8 @@ Deploy all 8 services to dev namespace and verify the full application is workin
 
 ---
 
+
+
 # EPIC E-10: CI Pipeline (CI-only, ArgoCD handles CD)
 
 **Priority:** P0
@@ -1443,6 +1652,8 @@ Deploy all 8 services to dev namespace and verify the full application is workin
 **Blocks:** None
 
 ---
+
+
 
 ### PETPLAT-49: Create build and push pipeline
 
@@ -1459,6 +1670,7 @@ Create the GitHub Actions workflow that builds Docker images for changed service
 **Technical Spec:** [CI/CD Pipeline](./technical-spec.md#cicd-pipeline), [Docker Build](./technical-spec.md#docker-build), [ECR Container Registry](./technical-spec.md#ecr-container-registry)
 
 **Acceptance Criteria:**
+
 - [ ] `.github/workflows/build-push.yml` in the application repo fork (not the platform repo)
 - [ ] Trigger: `on: push: branches: [main]`
 - [ ] `dorny/paths-filter` detects which of the 8 service directories changed — one boolean per service
@@ -1475,6 +1687,8 @@ Create the GitHub Actions workflow that builds Docker images for changed service
 
 ---
 
+
+
 ### PETPLAT-50: Create update-image-tags workflow
 
 **Type:** Story
@@ -1490,6 +1704,7 @@ Create GitHub Actions workflow in the platform repo that updates image tags in H
 **Technical Spec:** [CI/CD Pipeline](./technical-spec.md#cicd-pipeline), [GitOps with ArgoCD](./technical-spec.md#gitops-with-argocd)
 
 **Acceptance Criteria:**
+
 - [ ] `.github/workflows/update-image-tags.yml` in the platform repo
 - [ ] Trigger: `on: repository_dispatch: types: [app-image-built]`
 - [ ] Receives payload from app repo: SHA and list of changed services
@@ -1501,11 +1716,15 @@ Create GitHub Actions workflow in the platform repo that updates image tags in H
 
 ---
 
+
+
 ### ~~PETPLAT-51: REMOVED — deploy-to-prod pipeline replaced by ArgoCD~~
 
-_Prod deployment is now handled by ArgoCD (E-17) with manual sync policy. No separate deploy-prod workflow needed. ArgoCD Application CRD for prod is configured with `syncPolicy: manual` requiring explicit approval in ArgoCD UI. See PETPLAT-109._
+*Prod deployment is now handled by ArgoCD (E-17) with manual sync policy. No separate deploy-prod workflow needed. ArgoCD Application CRD for prod is configured with* `syncPolicy: manual` *requiring explicit approval in ArgoCD UI. See PETPLAT-109.*
 
 ---
+
+
 
 ### PETPLAT-52: Configure OIDC federation and GitHub Secrets
 
@@ -1522,12 +1741,15 @@ Configure OIDC federation between GitHub Actions and AWS, plus GitHub Secrets fo
 **Technical Spec:** [CI/CD Pipeline](./technical-spec.md#cicd-pipeline)
 
 **Acceptance Criteria:**
+
 - [ ] OIDC IAM role for GitHub Actions (federated identity — no long-lived keys)
 - [ ] GitHub Secrets: AWS region, AWS account ID (for ECR registry URL)
 - [ ] IAM role permissions include `ecr:GetAuthorizationToken`, `ecr:BatchCheckLayerAvailability`, `ecr:PutImage`, etc.
 - [ ] Documentation: how to configure OIDC federation
 
 ---
+
+
 
 ### PETPLAT-53: Create reusable pipeline templates
 
@@ -1544,12 +1766,15 @@ Extract common workflow steps into reusable workflows or composite actions. Sinc
 **Technical Spec:** [CI/CD Pipeline](./technical-spec.md#cicd-pipeline)
 
 **Acceptance Criteria:**
+
 - [ ] `.github/workflows/reusable/ecr-login.yml` — reusable ECR login workflow
 - [ ] `.github/workflows/reusable/update-tags.yml` — reusable image tag update workflow
 - [ ] Main workflows call reusable workflows
 - [ ] DRY: no duplicated steps between build-push and update-tags workflows
 
 ---
+
+
 
 ### PETPLAT-54: Implement rollback strategy
 
@@ -1566,6 +1791,7 @@ Document and implement rollback procedures for failed deployments. With ArgoCD h
 **Technical Spec:** [GitOps with ArgoCD](./technical-spec.md#gitops-with-argocd), [CI/CD Pipeline](./technical-spec.md#cicd-pipeline)
 
 **Acceptance Criteria:**
+
 - [ ] GitOps rollback: revert image tag commit in Git → ArgoCD syncs previous version
 - [ ] ArgoCD rollback: use ArgoCD UI or CLI to rollback to previous sync
 - [ ] `kubectl rollout undo` documented as emergency fallback
@@ -1573,6 +1799,8 @@ Document and implement rollback procedures for failed deployments. With ArgoCD h
 - [ ] Documented in runbook
 
 ---
+
+
 
 # EPIC E-11: Observability
 
@@ -1582,6 +1810,8 @@ Document and implement rollback procedures for failed deployments. With ArgoCD h
 **Blocks:** None
 
 ---
+
+
 
 ### PETPLAT-55: Deploy Prometheus on EKS
 
@@ -1598,6 +1828,7 @@ Deploy Prometheus on EKS to scrape metrics from all 8 Petclinic services via the
 **Technical Spec:** [Observability](./technical-spec.md#observability)
 
 **Acceptance Criteria:**
+
 - [ ] Prometheus deployed to monitoring namespace
 - [ ] Scrape config targets all 8 services on /actuator/prometheus
 - [ ] Scrape interval: 15s
@@ -1606,6 +1837,8 @@ Deploy Prometheus on EKS to scrape metrics from all 8 Petclinic services via the
 - [ ] Persistent volume for metric retention (configurable days)
 
 ---
+
+
 
 ### PETPLAT-56: Deploy Grafana on EKS
 
@@ -1622,6 +1855,7 @@ Deploy Grafana with Prometheus and Loki as datasources.
 **Technical Spec:** [Observability](./technical-spec.md#observability)
 
 **Acceptance Criteria:**
+
 - [ ] Grafana deployed to monitoring namespace
 - [ ] Prometheus datasource auto-configured
 - [ ] Loki datasource auto-configured
@@ -1630,6 +1864,8 @@ Deploy Grafana with Prometheus and Loki as datasources.
 - [ ] Persistent volume for dashboard state
 
 ---
+
+
 
 ### PETPLAT-57: Create per-service Grafana dashboards
 
@@ -1646,6 +1882,7 @@ Create Grafana dashboards for each Petclinic service showing key metrics.
 **Technical Spec:** [Observability](./technical-spec.md#observability)
 
 **Acceptance Criteria:**
+
 - [ ] Dashboard per service showing: request rate (RPS), error rate, p95/p99 latency
 - [ ] Overview dashboard showing all services at a glance
 - [ ] JVM metrics dashboard: heap usage, GC pauses, thread count
@@ -1653,6 +1890,8 @@ Create Grafana dashboards for each Petclinic service showing key metrics.
 - [ ] Dashboards provisioned automatically via ConfigMap
 
 ---
+
+
 
 ### PETPLAT-58: Create alerting rules
 
@@ -1669,6 +1908,7 @@ Create Prometheus alerting rules for key conditions.
 **Technical Spec:** [Observability](./technical-spec.md#observability)
 
 **Acceptance Criteria:**
+
 - [ ] Alert: Service down (target up == 0) per service
 - [ ] Alert: High error rate (> 5% 5xx responses over 5 min)
 - [ ] Alert: High latency (p95 > 500ms over 5 min)
@@ -1677,6 +1917,8 @@ Create Prometheus alerting rules for key conditions.
 - [ ] Alert rules stored as ConfigMap or PrometheusRule CR
 
 ---
+
+
 
 ### PETPLAT-59: Deploy Loki and FluentBit for centralized logging
 
@@ -1693,6 +1935,7 @@ Deploy Loki for log aggregation and FluentBit as a DaemonSet to collect and forw
 **Technical Spec:** [Observability](./technical-spec.md#observability)
 
 **Acceptance Criteria:**
+
 - [ ] Loki deployed to monitoring namespace with PersistentVolume (10Gi dev, 50Gi prod)
 - [ ] Loki log retention configured (7 days dev, 30 days prod)
 - [ ] FluentBit DaemonSet deployed on all nodes
@@ -1702,6 +1945,8 @@ Deploy Loki for log aggregation and FluentBit as a DaemonSet to collect and forw
 - [ ] No IRSA role required — Loki is in-cluster
 
 ---
+
+
 
 ### PETPLAT-60: Deploy Zipkin for distributed tracing
 
@@ -1718,6 +1963,7 @@ Deploy Zipkin on EKS for distributed tracing. The app already exports traces via
 **Technical Spec:** [Observability](./technical-spec.md#observability)
 
 **Acceptance Criteria:**
+
 - [ ] Zipkin deployed to tracing namespace
 - [ ] Port 9411 accessible (port-forward or ingress)
 - [ ] Services configured to send traces to Zipkin endpoint (via ConfigMap env var)
@@ -1726,22 +1972,29 @@ Deploy Zipkin on EKS for distributed tracing. The app already exports traces via
 
 ---
 
+
+
 ### ~~PETPLAT-61: Create Terraform observability module for CloudWatch resources — REMOVED~~
 
-_Removed: observability stack is fully in-cluster (Prometheus, Loki, Grafana, FluentBit, Zipkin, Alertmanager). No AWS-side resources required — no CloudWatch log groups, no FluentBit IRSA role, no CloudWatch Alarms. PETPLAT-59 covers Loki + FluentBit deployment._
+*Removed: observability stack is fully in-cluster (Prometheus, Loki, Grafana, FluentBit, Zipkin, Alertmanager). No AWS-side resources required — no CloudWatch log groups, no FluentBit IRSA role, no CloudWatch Alarms. PETPLAT-59 covers Loki + FluentBit deployment.*
 
 ---
+
+
 
 # ~~EPIC E-12: Bastion Host — REMOVED~~
 
-_Bastion host removed from project scope. Not needed for this learning environment:_
-- _kubectl access: run locally with `aws eks update-kubeconfig`_
-- _RDS debugging: use a debug pod (`kubectl run -it debug --image=mysql:8 -- mysql -h <endpoint>`)_
-- _Emergency access: AWS Systems Manager Session Manager (free, no SSH keys)_
+*Bastion host removed from project scope. Not needed for this learning environment:*
 
-_PETPLAT-62, 63, 64, 65 all removed. Saves ~$15/mo per student + eliminates SSH key management._
+- *kubectl access: run locally with* `aws eks update-kubeconfig`
+- *RDS debugging: use a debug pod (*`kubectl run -it debug --image=mysql:8 -- mysql -h <endpoint>`*)*
+- *Emergency access: AWS Systems Manager Session Manager (free, no SSH keys)*
+
+*PETPLAT-62, 63, 64, 65 all removed. Saves ~$15/mo per student + eliminates SSH key management.*
 
 ---
+
+
 
 # EPIC E-13: Security & Compliance
 
@@ -1751,6 +2004,8 @@ _PETPLAT-62, 63, 64, 65 all removed. Saves ~$15/mo per student + eliminates SSH 
 **Blocks:** None
 
 ---
+
+
 
 ### PETPLAT-66: Run Checkov scan on all Terraform code
 
@@ -1767,6 +2022,7 @@ Run Checkov on all Terraform modules and fix critical/high findings.
 **Technical Spec:** [Security Controls](./technical-spec.md#security-controls)
 
 **Acceptance Criteria:**
+
 - [ ] Checkov scan run on `terraform/modules/` and `terraform/environments/`
 - [ ] All CRITICAL findings fixed
 - [ ] All HIGH findings fixed or documented with justification
@@ -1775,6 +2031,8 @@ Run Checkov on all Terraform modules and fix critical/high findings.
 - [ ] No secrets in Terraform code
 
 ---
+
+
 
 ### PETPLAT-67: Implement K8s network policies
 
@@ -1791,16 +2049,19 @@ Create network policies to restrict pod-to-pod communication.
 **Technical Spec:** [Security Controls](./technical-spec.md#security-controls)
 
 **Acceptance Criteria:**
+
 - [ ] Default deny-all ingress policy in petclinic namespaces
 - [ ] Config Server: allow ingress from all petclinic pods on 8888
 - [ ] Discovery Server: allow ingress from all petclinic pods on 8761
-- [ ] API Gateway: allow ingress from ALB and from internet (via ingress controller)
+- [ ] API Gateway: allow ingress to 8080 from public subnet CIDRs (ALB ENIs); ClusterIP only, no NodePort
 - [ ] Domain services: allow ingress only from API Gateway
 - [ ] Admin Server: allow ingress from specific IPs or internal only
 - [ ] All services: allow egress to Config Server, Discovery Server, DNS, RDS
 - [ ] `kubectl apply --dry-run=client` passes
 
 ---
+
+
 
 ### PETPLAT-68: Review and tighten IAM policies
 
@@ -1817,6 +2078,7 @@ Audit all IAM roles and policies for least privilege.
 **Technical Spec:** [IRSA Roles](./technical-spec.md#irsa-roles), [Security Controls](./technical-spec.md#security-controls)
 
 **Acceptance Criteria:**
+
 - [ ] No wildcard (*) actions in any policy
 - [ ] No wildcard (*) resources where avoidable
 - [ ] EKS node role has only required managed policies
@@ -1825,6 +2087,8 @@ Audit all IAM roles and policies for least privilege.
 - [ ] All policies documented with justification
 
 ---
+
+
 
 ### PETPLAT-69: Enable image vulnerability scanning and review results
 
@@ -1841,6 +2105,7 @@ Set up vulnerability scanning for container images. ECR Private supports scan-on
 **Technical Spec:** [ECR Container Registry](./technical-spec.md#ecr-container-registry)
 
 **Acceptance Criteria:**
+
 - [ ] ECR scan-on-push enabled on all repositories (configured in PETPLAT-18)
 - [ ] Trivy scan integrated into CI pipeline (PETPLAT-105) for pre-push scanning
 - [ ] After pushing images, review ECR scan findings in AWS Console
@@ -1848,6 +2113,8 @@ Set up vulnerability scanning for container images. ECR Private supports scan-on
 - [ ] Scan results review process documented
 
 ---
+
+
 
 ### PETPLAT-70: Run Trivy scan on Docker images
 
@@ -1864,12 +2131,15 @@ Run Trivy locally or in CI on all 8 Docker images.
 **Technical Spec:** [ECR Container Registry](./technical-spec.md#ecr-container-registry), [CI/CD Pipeline](./technical-spec.md#cicd-pipeline)
 
 **Acceptance Criteria:**
+
 - [ ] Trivy scan run on all 8 images
 - [ ] Critical findings documented
 - [ ] Pipeline step added (optional) for Trivy scan
 - [ ] Results compared with ECR scan-on-push findings
 
 ---
+
+
 
 ### PETPLAT-71: Security group audit — no unnecessary open ports
 
@@ -1886,6 +2156,7 @@ Audit all security groups for overly permissive rules.
 **Technical Spec:** [Security Groups](./technical-spec.md#security-groups)
 
 **Acceptance Criteria:**
+
 - [ ] No security group allows 0.0.0.0/0 on SSH (port 22)
 - [ ] RDS SG only allows 3306 from EKS nodes
 - [ ] ALB SG only allows 80/443 from internet
@@ -1895,6 +2166,8 @@ Audit all security groups for overly permissive rules.
 
 ---
 
+
+
 # EPIC E-14: Scaling & Cost Optimization (Karpenter)
 
 **Priority:** P2
@@ -1903,6 +2176,8 @@ Audit all security groups for overly permissive rules.
 **Blocks:** None
 
 ---
+
+
 
 ### PETPLAT-72: Install Metrics Server on EKS
 
@@ -1919,12 +2194,15 @@ Install Kubernetes Metrics Server (required for HPA to work).
 **Technical Spec:** [EKS Cluster](./technical-spec.md#eks-cluster)
 
 **Acceptance Criteria:**
+
 - [ ] Metrics Server deployed to kube-system
 - [ ] `kubectl top nodes` works
 - [ ] `kubectl top pods` works
 - [ ] Metrics Server stable and healthy
 
 ---
+
+
 
 ### PETPLAT-73: Install Karpenter on EKS
 
@@ -1941,6 +2219,7 @@ Install Karpenter for node autoscaling on EKS. Karpenter provides faster, more f
 **Technical Spec:** [Karpenter Node Autoscaling](./technical-spec.md#karpenter-node-autoscaling), [IRSA Roles](./technical-spec.md#irsa-roles)
 
 **Acceptance Criteria:**
+
 - [ ] Karpenter controller deployed to `kube-system` namespace
 - [ ] IRSA role for Karpenter with required EC2, EKS, IAM, SQS, and pricing permissions
 - [ ] Karpenter instance profile created for provisioned nodes
@@ -1953,6 +2232,8 @@ Install Karpenter for node autoscaling on EKS. Karpenter provides faster, more f
 - [ ] Karpenter logs show provisioning decisions
 
 ---
+
+
 
 ### PETPLAT-74: Configure Karpenter NodePool for spot instances in dev
 
@@ -1969,6 +2250,7 @@ Configure Karpenter NodePool for dev environment to use spot instances, saving 6
 **Technical Spec:** [Karpenter Node Autoscaling](./technical-spec.md#karpenter-node-autoscaling), [Scaling and Cost](./technical-spec.md#scaling-and-cost)
 
 **Acceptance Criteria:**
+
 - [ ] NodePool CRD for dev with `spec.template.spec.requirements` including `karpenter.sh/capacity-type: ["spot", "on-demand"]`
 - [ ] EC2NodeClass with multiple ARM instance families: t4g.small, t4g.medium (Graviton, for spot availability)
 - [ ] NodePool weight configured to prefer spot over on-demand
@@ -1977,6 +2259,8 @@ Configure Karpenter NodePool for dev environment to use spot instances, saving 6
 - [ ] Verified: Karpenter provisions spot instances when scaling up
 
 ---
+
+
 
 ### PETPLAT-75: Create CloudWatch budget alerts
 
@@ -1993,6 +2277,7 @@ Set up AWS Budget alerts to notify when spending exceeds thresholds.
 **Technical Spec:** [Scaling and Cost](./technical-spec.md#scaling-and-cost)
 
 **Acceptance Criteria:**
+
 - [ ] Terraform resource for AWS Budget
 - [ ] Monthly budget threshold configurable (e.g., $100 per environment)
 - [ ] Alert at 50%, 80%, 100% of budget
@@ -2000,6 +2285,8 @@ Set up AWS Budget alerts to notify when spending exceeds thresholds.
 - [ ] `terraform validate` passes
 
 ---
+
+
 
 ### PETPLAT-76: Document cost breakdown
 
@@ -2016,12 +2303,15 @@ Document the estimated monthly cost of the full stack.
 **Technical Spec:** [Scaling and Cost](./technical-spec.md#scaling-and-cost)
 
 **Acceptance Criteria:**
+
 - [ ] Cost table in docs: EKS control plane, EC2 nodes, RDS, ALB, S3, data transfer (no NAT — intentional)
 - [ ] Dev vs prod cost comparison
 - [ ] Cost optimization recommendations
 - [ ] Added to docs/architecture.md or separate docs/cost.md
 
 ---
+
+
 
 # EPIC E-15: Documentation & Runbooks
 
@@ -2031,6 +2321,8 @@ Document the estimated monthly cost of the full stack.
 **Blocks:** None
 
 ---
+
+
 
 ### PETPLAT-77: Create architecture document
 
@@ -2047,6 +2339,7 @@ Document the infrastructure architecture.
 **Technical Spec:** [General Project Parameters](./technical-spec.md#general-project-parameters), [Application Services](./technical-spec.md#application-services)
 
 **Acceptance Criteria:**
+
 - [ ] `docs/architecture.md`
 - [ ] Infrastructure diagram (AWS resources and their relationships)
 - [ ] Service topology diagram (8 services and their connections)
@@ -2055,6 +2348,8 @@ Document the infrastructure architecture.
 - [ ] Environment differences (dev vs prod)
 
 ---
+
+
 
 ### PETPLAT-78: Create operations runbook
 
@@ -2071,6 +2366,7 @@ Create the day-2 operations runbook.
 **Technical Spec:** [Application Services](./technical-spec.md#application-services), [Kubernetes Manifests](./technical-spec.md#kubernetes-manifests)
 
 **Acceptance Criteria:**
+
 - [ ] `docs/runbook.md`
 - [ ] How to: restart a service (`kubectl rollout restart`)
 - [ ] How to: scale a service (manual and HPA)
@@ -2084,6 +2380,8 @@ Create the day-2 operations runbook.
 - [ ] Each procedure: command, expected output, verification step
 
 ---
+
+
 
 ### PETPLAT-79: Create incident playbook
 
@@ -2100,6 +2398,7 @@ Document common failure scenarios and their resolution.
 **Technical Spec:** [Application Services](./technical-spec.md#application-services)
 
 **Acceptance Criteria:**
+
 - [ ] `docs/incident-playbook.md`
 - [ ] Scenario: Pod in CrashLoopBackOff — diagnosis, fix
 - [ ] Scenario: Service not registering with Eureka — diagnosis, fix
@@ -2110,6 +2409,8 @@ Document common failure scenarios and their resolution.
 - [ ] Each scenario: symptoms, diagnosis commands, resolution steps
 
 ---
+
+
 
 ### PETPLAT-80: Create onboarding guide
 
@@ -2126,6 +2427,7 @@ Create a guide that gets a new engineer productive in ≤ 90 minutes.
 **Technical Spec:** [General Project Parameters](./technical-spec.md#general-project-parameters), [Application Services](./technical-spec.md#application-services)
 
 **Acceptance Criteria:**
+
 - [ ] `docs/onboarding.md`
 - [ ] Prerequisites checklist (tools, access, accounts)
 - [ ] Step-by-step: clone, install tools, configure AWS, connect to cluster
@@ -2135,6 +2437,8 @@ Create a guide that gets a new engineer productive in ≤ 90 minutes.
 - [ ] Estimated time per section
 
 ---
+
+
 
 ### PETPLAT-81: Create Architecture Decision Records (ADRs)
 
@@ -2151,7 +2455,8 @@ Create ADRs for key architecture decisions made during the project.
 **Technical Spec:** [ADR Index](./technical-spec.md#adr-index)
 
 **Acceptance Criteria:**
-- [ ] `docs/adr/0001-public-subnets.md` — all-public subnet design (no NAT Gateway)
+
+- [x] `docs/adr/ADR-0001-private-nodes-nat-instance.md` — private EKS nodes + t4g.micro NAT instance (accepted)
 - [ ] `docs/adr/0002-eks-over-ecs.md` — why EKS
 - [ ] `docs/adr/0003-shared-rds.md` — shared RDS instance for all services
 - [ ] `docs/adr/0004-plain-yaml-over-helm.md` — original plain K8s YAML choice (superseded by ADR-0007)
@@ -2166,6 +2471,8 @@ Create ADRs for key architecture decisions made during the project.
 
 ---
 
+
+
 ### PETPLAT-82: Create AGENTS.md for petclinic-platform repo
 
 **Type:** Task
@@ -2179,6 +2486,7 @@ Create ADRs for key architecture decisions made during the project.
 Create `AGENTS.md` in petclinic-platform that gives Cursor full context about the infrastructure repo. This is the first file created — it establishes conventions before any infrastructure code is written.
 
 **Acceptance Criteria:**
+
 - [x] `AGENTS.md` at petclinic-platform root
 - [x] Repo purpose and directory layout
 - [x] Terraform conventions (module pattern, naming, state, tags, AWS provider ~> 6.0)
@@ -2192,15 +2500,21 @@ Create `AGENTS.md` in petclinic-platform that gives Cursor full context about th
 
 ---
 
+
+
 # Additional Stories (Gap Analysis — from PO/Architect/Lead Dev review)
 
 The following stories were identified during the backlog review session to close gaps for a true production-ready deployment.
 
 ---
 
-### ~~PETPLAT-83: Define AWS resource tagging strategy~~ *(Removed — redundant with PETPLAT-5 which already covers `default_tags` and tag propagation)*
+
+
+### ~~PETPLAT-83: Define AWS resource tagging strategy~~ *(Removed — redundant with PETPLAT-5 which already covers* `default_tags` *and tag propagation)*
 
 ---
+
+
 
 ### PETPLAT-84: Manage EKS add-ons via Terraform
 
@@ -2217,6 +2531,7 @@ Manage EKS managed add-ons (CoreDNS, kube-proxy, vpc-cni, **EBS CSI Driver**) vi
 **Technical Spec:** [EKS Cluster](./technical-spec.md#eks-cluster), [IRSA Roles](./technical-spec.md#irsa-roles)
 
 **Acceptance Criteria:**
+
 - [ ] `aws_eks_addon` resources for: coredns, kube-proxy, vpc-cni, **aws-ebs-csi-driver**
 - [ ] IRSA role for EBS CSI Driver with `AmazonEBSCSIDriverPolicy` attached
 - [ ] Add-on versions pinned (not `latest`)
@@ -2226,6 +2541,8 @@ Manage EKS managed add-ons (CoreDNS, kube-proxy, vpc-cni, **EBS CSI Driver**) vi
 - [ ] Documented: how to upgrade add-on versions
 
 ---
+
+
 
 ### PETPLAT-85: Build and push Docker images to ECR (initial)
 
@@ -2242,6 +2559,7 @@ Perform the first-time manual build of all 8 Docker images from the application 
 **Technical Spec:** [Docker Build](./technical-spec.md#docker-build), [ECR Container Registry](./technical-spec.md#ecr-container-registry)
 
 **Acceptance Criteria:**
+
 - [ ] Application repo cloned locally
 - [ ] `./mvnw clean install -P buildDocker` succeeds (all 8 images built)
 - [ ] ECR login successful: `aws ecr get-login-password --region eu-central-1 | docker login --username AWS --password-stdin {account}.dkr.ecr.eu-central-1.amazonaws.com`
@@ -2251,6 +2569,8 @@ Perform the first-time manual build of all 8 Docker images from the application 
 - [ ] Documented: the build and push commands for reference
 
 ---
+
+
 
 ### PETPLAT-86: Create reusable smoke test script
 
@@ -2267,6 +2587,7 @@ Create a smoke test script that validates all 8 services are running, healthy, a
 **Technical Spec:** [Application Services](./technical-spec.md#application-services)
 
 **Acceptance Criteria:**
+
 - [ ] `scripts/smoke-test.sh` created
 - [ ] Accepts namespace as parameter
 - [ ] Checks: all 8 deployments have desired replicas ready
@@ -2279,6 +2600,8 @@ Create a smoke test script that validates all 8 services are running, healthy, a
 - [ ] Runs from within the cluster (kubectl exec) or locally via kubectl
 
 ---
+
+
 
 ### PETPLAT-87: Implement image tag update mechanism for GitOps
 
@@ -2295,6 +2618,7 @@ Define and implement the mechanism for how the CI pipeline updates Helm values f
 **Technical Spec:** [CI/CD Pipeline](./technical-spec.md#cicd-pipeline), [GitOps with ArgoCD](./technical-spec.md#gitops-with-argocd)
 
 **Acceptance Criteria:**
+
 - [ ] Mechanism chosen and documented (ADR or inline) — yq recommended for YAML editing
 - [ ] CI pipeline can update image tag in `helm-values/{service}.yaml` files
 - [ ] Image tag is the commit SHA (matches what was pushed to ECR)
@@ -2304,6 +2628,8 @@ Define and implement the mechanism for how the CI pipeline updates Helm values f
 - [ ] Tested: CI updates tag → ArgoCD deploys correct image
 
 ---
+
+
 
 ### PETPLAT-88: Add Pod Disruption Budgets for prod
 
@@ -2320,6 +2646,7 @@ Add PodDisruptionBudgets (PDBs) for prod to ensure minimum availability during n
 **Technical Spec:** [Kubernetes Overlays](./technical-spec.md#kubernetes-overlays)
 
 **Acceptance Criteria:**
+
 - [ ] PDB for each service in prod overlay
 - [ ] Config Server: minAvailable=1
 - [ ] Discovery Server: minAvailable=1
@@ -2329,6 +2656,8 @@ Add PodDisruptionBudgets (PDBs) for prod to ensure minimum availability during n
 - [ ] Tested: node drain respects PDB (doesn't evict last pod)
 
 ---
+
+
 
 ### PETPLAT-89: Add resource quotas and limit ranges per namespace
 
@@ -2345,6 +2674,7 @@ Add ResourceQuotas and LimitRanges to petclinic namespaces to prevent runaway re
 **Technical Spec:** [Kubernetes Overlays](./technical-spec.md#kubernetes-overlays)
 
 **Acceptance Criteria:**
+
 - [ ] ResourceQuota per namespace: max CPU, max memory, max pods
 - [ ] Dev namespace: lower limits (e.g., 8 CPU, 16Gi memory, 30 pods)
 - [ ] Prod namespace: higher limits (e.g., 32 CPU, 64Gi memory, 80 pods)
@@ -2353,6 +2683,8 @@ Add ResourceQuotas and LimitRanges to petclinic namespaces to prevent runaway re
 - [ ] `kubectl apply --dry-run=client` passes
 
 ---
+
+
 
 ### PETPLAT-90: Disaster recovery test — full teardown and rebuild
 
@@ -2369,6 +2701,7 @@ Execute a full `terraform destroy` of the dev environment and rebuild from scrat
 **Technical Spec:** [Terraform State Backend](./technical-spec.md#terraform-state-backend), [Terraform Modules](./technical-spec.md#terraform-modules)
 
 **Acceptance Criteria:**
+
 - [ ] `terraform destroy` completes for dev environment
 - [ ] All AWS resources confirmed deleted (no orphans)
 - [ ] `terraform apply` recreates the full stack
@@ -2379,6 +2712,8 @@ Execute a full `terraform destroy` of the dev environment and rebuild from scrat
 - [ ] Findings added to runbook
 
 ---
+
+
 
 ### PETPLAT-91: Define EKS version upgrade strategy
 
@@ -2395,6 +2730,7 @@ Document the EKS cluster upgrade strategy. EKS Kubernetes versions go end-of-lif
 **Technical Spec:** [EKS Cluster](./technical-spec.md#eks-cluster)
 
 **Acceptance Criteria:**
+
 - [ ] Upgrade strategy documented in docs/runbook.md or docs/adr/
 - [ ] Steps: check release notes → upgrade add-ons → upgrade control plane → upgrade node groups
 - [ ] Pre-upgrade checklist: check deprecation warnings, test in dev first, verify PDBs
@@ -2403,6 +2739,8 @@ Document the EKS cluster upgrade strategy. EKS Kubernetes versions go end-of-lif
 - [ ] Schedule: how often to check for new versions
 
 ---
+
+
 
 ### PETPLAT-92: Terraform state management operations guide
 
@@ -2419,6 +2757,7 @@ Document Terraform state management procedures for common operational scenarios.
 **Technical Spec:** [Terraform State Backend](./technical-spec.md#terraform-state-backend)
 
 **Acceptance Criteria:**
+
 - [ ] Documented in docs/runbook.md or separate docs/terraform-ops.md
 - [ ] How to: view current state (`terraform state list`)
 - [ ] How to: import an existing resource (`terraform import`)
@@ -2432,11 +2771,15 @@ Document Terraform state management procedures for common operational scenarios.
 
 ---
 
+
+
 # Additional Stories (Production Readiness & Handover Audit — Session 3)
 
 The following stories were identified during a comprehensive end-to-end audit to ensure the platform is fully production-ready and can be handed over to an internal team.
 
 ---
+
+
 
 ### PETPLAT-97: Create monitoring and alerting guide
 
@@ -2453,6 +2796,7 @@ Create a comprehensive monitoring and alerting guide for the internal team. This
 **Technical Spec:** [Observability](./technical-spec.md#observability)
 
 **Acceptance Criteria:**
+
 - [ ] `docs/monitoring-alerting-guide.md` created
 - [ ] Lists all Prometheus alert rules with thresholds and severity
 - [ ] Documents notification channels (email, Slack, PagerDuty if configured)
@@ -2463,6 +2807,8 @@ Create a comprehensive monitoring and alerting guide for the internal team. This
 - [ ] Loki log streams in Grafana Explore — how to query using LogQL
 
 ---
+
+
 
 ### PETPLAT-98: Create secret rotation procedures
 
@@ -2479,6 +2825,7 @@ Document and implement secret rotation procedures for all managed Secrets Manage
 **Technical Spec:** [Secrets Management](./technical-spec.md#secrets-management)
 
 **Acceptance Criteria:**
+
 - [ ] `docs/secret-rotation.md` created (or detailed section in runbook)
 - [ ] RDS master password: enable Secrets Manager automatic rotation (30-day schedule) or document manual rotation
 - [ ] OpenAI API key: manual rotation procedure documented (update Secrets Manager secret, ESO syncs to K8s)
@@ -2489,6 +2836,8 @@ Document and implement secret rotation procedures for all managed Secrets Manage
 - [ ] Tested: RDS rotation works and services reconnect
 
 ---
+
+
 
 ### PETPLAT-99: Create disaster recovery plan
 
@@ -2505,6 +2854,7 @@ Create a formal disaster recovery plan document with RTO/RPO definitions, backup
 **Technical Spec:** [RDS Database](./technical-spec.md#rds-database), [Terraform State Backend](./technical-spec.md#terraform-state-backend), [ECR Container Registry](./technical-spec.md#ecr-container-registry)
 
 **Acceptance Criteria:**
+
 - [ ] `docs/disaster-recovery.md` created
 - [ ] RTO/RPO targets defined (e.g., RTO: 60 min, RPO: 1 hour for RDS)
 - [ ] Data backup strategy: RDS automated backups, S3 state versioning, ECR image retention (lifecycle policies)
@@ -2517,6 +2867,8 @@ Create a formal disaster recovery plan document with RTO/RPO definitions, backup
 - [ ] Lessons learned from PETPLAT-90 DR test incorporated
 
 ---
+
+
 
 ### PETPLAT-100: Create compliance checklist
 
@@ -2533,6 +2885,7 @@ Create a consolidated compliance checklist documenting all security controls, en
 **Technical Spec:** [Security Controls](./technical-spec.md#security-controls)
 
 **Acceptance Criteria:**
+
 - [ ] `docs/compliance-checklist.md` created
 - [ ] Encryption at rest inventory: RDS (KMS), EBS (default encryption), S3 (SSE), Secrets Manager (KMS)
 - [ ] Encryption in transit: TLS at ALB, internal communication status documented
@@ -2545,6 +2898,8 @@ Create a consolidated compliance checklist documenting all security controls, en
 - [ ] Remediation SLAs: Critical (24h), High (72h), Medium (1 week), Low (next sprint)
 
 ---
+
+
 
 ### PETPLAT-101: Enforce Pod Security Standards
 
@@ -2561,6 +2916,7 @@ Enable Pod Security Admission (PSA) at the namespace level and set SecurityConte
 **Technical Spec:** [Kubernetes Manifests](./technical-spec.md#kubernetes-manifests), [Security Controls](./technical-spec.md#security-controls)
 
 **Acceptance Criteria:**
+
 - [ ] PSA labels applied to petclinic-dev and petclinic-prod namespaces (enforce: baseline, warn: restricted)
 - [ ] All Deployments in base manifests set SecurityContext: runAsNonRoot: true
 - [ ] All containers: readOnlyRootFilesystem: true (where possible — Spring Boot may need /tmp writable)
@@ -2570,6 +2926,8 @@ Enable Pod Security Admission (PSA) at the namespace level and set SecurityConte
 - [ ] Documented: what PSA mode is enforced and why
 
 ---
+
+
 
 ### PETPLAT-102: Create load testing framework
 
@@ -2586,6 +2944,7 @@ Create load test scripts and run baseline performance tests against the dev envi
 **Technical Spec:** [Application Services](./technical-spec.md#application-services), [Scaling and Cost](./technical-spec.md#scaling-and-cost)
 
 **Acceptance Criteria:**
+
 - [ ] Load testing tool selected (k6 recommended for simplicity)
 - [ ] Load test scripts created in `scripts/load-tests/` for key API flows
 - [ ] Scenarios: list owners, create visit, get vets, API gateway routing
@@ -2594,6 +2953,8 @@ Create load test scripts and run baseline performance tests against the dev envi
 - [ ] Capacity recommendations: pods per service, node count, RDS IOPS
 
 ---
+
+
 
 ### PETPLAT-103: Deploy Alertmanager with notification channels
 
@@ -2610,6 +2971,7 @@ Deploy Alertmanager alongside Prometheus to handle alert routing and notificatio
 **Technical Spec:** [Observability](./technical-spec.md#observability)
 
 **Acceptance Criteria:**
+
 - [ ] Alertmanager deployed in the monitoring namespace
 - [ ] Connected to Prometheus (alertmanager_config in Prometheus)
 - [ ] At least one notification channel configured (email minimum, Slack recommended)
@@ -2619,6 +2981,8 @@ Deploy Alertmanager alongside Prometheus to handle alert routing and notificatio
 - [ ] Tested: trigger a test alert, verify notification received
 
 ---
+
+
 
 ### PETPLAT-104: Add incident escalation paths and RCA template
 
@@ -2635,6 +2999,7 @@ Extend the incident playbook (PETPLAT-79) with severity classification, escalati
 **Technical Spec:** [Application Services](./technical-spec.md#application-services)
 
 **Acceptance Criteria:**
+
 - [ ] Severity classification added: SEV1 (service down), SEV2 (degraded), SEV3 (minor issue)
 - [ ] Escalation tiers: L1 (on-call engineer), L2 (senior engineer), L3 (architect/vendor)
 - [ ] Contact information template (names, roles, phone, email — placeholder format)
@@ -2643,6 +3008,8 @@ Extend the incident playbook (PETPLAT-79) with severity classification, escalati
 - [ ] Communication template: status update format for stakeholders
 
 ---
+
+
 
 ### PETPLAT-105: Add CI vulnerability scanning gate
 
@@ -2659,6 +3026,7 @@ Add a vulnerability scanning step to the CI build pipeline that fails the build 
 **Technical Spec:** [CI/CD Pipeline](./technical-spec.md#cicd-pipeline), [ECR Container Registry](./technical-spec.md#ecr-container-registry)
 
 **Acceptance Criteria:**
+
 - [ ] Trivy scan step added to build-push pipeline after Docker build, before pushing to ECR
 - [ ] Pipeline fails (exit 1) if CRITICAL vulnerabilities are found
 - [ ] HIGH vulnerabilities generate warnings but do not block
@@ -2668,9 +3036,13 @@ Add a vulnerability scanning step to the CI build pipeline that fails the build 
 
 ---
 
+
+
 ### ~~PETPLAT-106: Implement Terraform drift detection~~ *(Removed — Day-2 operations task, requires CI pipeline from Section 11. Covered naturally in Section 18 lecture 18.4)*
 
 ---
+
+
 
 # EPIC E-16: Helm Charts
 
@@ -2680,6 +3052,8 @@ Add a vulnerability scanning step to the CI build pipeline that fails the build 
 **Blocks:** E-17 (ArgoCD deploys Helm charts)
 
 ---
+
+
 
 ### PETPLAT-107: Create generic Helm chart for Petclinic services
 
@@ -2696,6 +3070,7 @@ Create a generic, reusable Helm chart at `helm/petclinic-service/` that can depl
 **Technical Spec:** [Helm Charts](./technical-spec.md#helm-charts)
 
 **Acceptance Criteria:**
+
 - [ ] Chart at `helm/petclinic-service/` with Chart.yaml, values.yaml, templates/
 - [ ] Templates: deployment.yaml, service.yaml, configmap.yaml, serviceaccount.yaml, hpa.yaml, pdb.yaml
 - [ ] HPA and PDB templates are conditional (only rendered when enabled in values)
@@ -2707,6 +3082,8 @@ Create a generic, reusable Helm chart at `helm/petclinic-service/` that can depl
 - [ ] `helm template` renders valid YAML for each service
 
 ---
+
+
 
 ### PETPLAT-108: Create per-service Helm values files
 
@@ -2723,6 +3100,7 @@ Create per-service values files at `helm-values/{service}.yaml` for all 8 Petcli
 **Technical Spec:** [Helm Charts](./technical-spec.md#helm-charts), [Application Services](./technical-spec.md#application-services)
 
 **Acceptance Criteria:**
+
 - [ ] Values files created for all 8 services: `helm-values/config-server.yaml`, `helm-values/discovery-server.yaml`, `helm-values/api-gateway.yaml`, `helm-values/customers-service.yaml`, `helm-values/visits-service.yaml`, `helm-values/vets-service.yaml`, `helm-values/genai-service.yaml`, `helm-values/admin-server.yaml`
 - [ ] Each file specifies: image repo (`{account}.dkr.ecr.eu-central-1.amazonaws.com/petclinic-{env}/{service}`), image tag, container port, service port
 - [ ] Database services (customers, visits, vets): Spring profiles `docker,mysql`, datasource URL, secret references for RDS credentials
@@ -2732,6 +3110,8 @@ Create per-service values files at `helm-values/{service}.yaml` for all 8 Petcli
 - [ ] `helm template` with each values file renders correct manifests
 
 ---
+
+
 
 ### PETPLAT-109: Create per-environment Helm values files
 
@@ -2748,6 +3128,7 @@ Create environment-specific values files at `helm-values/dev.yaml` and `helm-val
 **Technical Spec:** [Helm Charts](./technical-spec.md#helm-charts), [Kubernetes Overlays](./technical-spec.md#kubernetes-overlays)
 
 **Acceptance Criteria:**
+
 - [ ] `helm-values/dev.yaml` — 1 replica per service, smaller resource limits, namespace petclinic-dev, HPA disabled
 - [ ] `helm-values/prod.yaml` — 2+ replicas for domain services, larger resources, namespace petclinic-prod, HPA enabled
 - [ ] Prod values include PDB settings (minAvailable=1)
@@ -2756,6 +3137,8 @@ Create environment-specific values files at `helm-values/dev.yaml` and `helm-val
 - [ ] `helm template` with combined values files renders correct manifests
 
 ---
+
+
 
 ### PETPLAT-110: Test Helm template rendering and validate output
 
@@ -2772,6 +3155,7 @@ Validate that Helm template rendering produces correct, deployable Kubernetes ma
 **Technical Spec:** [Helm Charts](./technical-spec.md#helm-charts)
 
 **Acceptance Criteria:**
+
 - [ ] `helm lint helm/petclinic-service/` passes
 - [ ] `helm template` renders valid YAML for each of the 8 services with dev values
 - [ ] `helm template` renders valid YAML for each of the 8 services with prod values
@@ -2780,6 +3164,8 @@ Validate that Helm template rendering produces correct, deployable Kubernetes ma
 - [ ] Script created at `scripts/validate-helm.sh` to automate this validation for all services and environments
 
 ---
+
+
 
 ### PETPLAT-111: Document Helm chart usage and conventions
 
@@ -2796,6 +3182,7 @@ Document the Helm chart structure, values file conventions, and how to add a new
 **Technical Spec:** [Helm Charts](./technical-spec.md#helm-charts)
 
 **Acceptance Criteria:**
+
 - [ ] Documentation in `docs/helm-guide.md` or as a section in architecture.md
 - [ ] Chart structure explained: templates, values hierarchy
 - [ ] How to: deploy a service manually with Helm
@@ -2808,6 +3195,8 @@ Document the Helm chart structure, values file conventions, and how to add a new
 
 ---
 
+
+
 # EPIC E-17: GitOps with ArgoCD
 
 **Priority:** P0
@@ -2816,6 +3205,8 @@ Document the Helm chart structure, values file conventions, and how to add a new
 **Blocks:** None (but E-10 CI pipeline pushes tags that ArgoCD deploys)
 
 ---
+
+
 
 ### PETPLAT-112: Install ArgoCD on EKS cluster
 
@@ -2832,6 +3223,7 @@ Install ArgoCD on the EKS cluster in a dedicated `argocd` namespace. Include the
 **Technical Spec:** [GitOps with ArgoCD](./technical-spec.md#gitops-with-argocd)
 
 **Acceptance Criteria:**
+
 - [ ] ArgoCD installed in `argocd` namespace using official manifests
 - [ ] Installation manifests stored at `k8s/argocd/install/`
 - [ ] ArgoCD server, repo-server, application-controller, Redis all running and healthy
@@ -2841,6 +3233,8 @@ Install ArgoCD on the EKS cluster in a dedicated `argocd` namespace. Include the
 - [ ] ArgoCD version pinned to a specific release
 
 ---
+
+
 
 ### PETPLAT-113: Create ArgoCD Application CRDs for dev environment
 
@@ -2857,6 +3251,7 @@ Create ArgoCD Application CRDs for all 8 Petclinic services in the dev environme
 **Technical Spec:** [GitOps with ArgoCD](./technical-spec.md#gitops-with-argocd), [Helm Charts](./technical-spec.md#helm-charts)
 
 **Acceptance Criteria:**
+
 - [ ] ArgoCD Application manifests at `k8s/argocd/applications/dev/` (one per service)
 - [ ] Each Application points to the Helm chart at `helm/petclinic-service/`
 - [ ] Each Application uses values files: `helm-values/{service}.yaml` + `helm-values/dev.yaml`
@@ -2867,6 +3262,8 @@ Create ArgoCD Application CRDs for all 8 Petclinic services in the dev environme
 - [ ] Verified: push a tag change → ArgoCD auto-syncs → new image deployed
 
 ---
+
+
 
 ### PETPLAT-114: Create ArgoCD Application CRDs for prod environment
 
@@ -2883,6 +3280,7 @@ Create ArgoCD Application CRDs for all 8 Petclinic services in the prod environm
 **Technical Spec:** [GitOps with ArgoCD](./technical-spec.md#gitops-with-argocd), [Helm Charts](./technical-spec.md#helm-charts)
 
 **Acceptance Criteria:**
+
 - [ ] ArgoCD Application manifests at `k8s/argocd/applications/prod/` (one per service)
 - [ ] Each Application points to the Helm chart at `helm/petclinic-service/`
 - [ ] Each Application uses values files: `helm-values/{service}.yaml` + `helm-values/prod.yaml`
@@ -2892,6 +3290,8 @@ Create ArgoCD Application CRDs for all 8 Petclinic services in the prod environm
 - [ ] Verified: manual sync deploys correctly to prod
 
 ---
+
+
 
 ### PETPLAT-115: Configure ArgoCD RBAC and access
 
@@ -2908,6 +3308,7 @@ Configure ArgoCD RBAC policies, user access, and security settings. Restrict who
 **Technical Spec:** [GitOps with ArgoCD](./technical-spec.md#gitops-with-argocd)
 
 **Acceptance Criteria:**
+
 - [ ] ArgoCD RBAC configured via argocd-rbac-cm ConfigMap
 - [ ] Admin role can manage all applications and settings
 - [ ] Developer role can view all applications but only sync dev environment
@@ -2917,6 +3318,8 @@ Configure ArgoCD RBAC policies, user access, and security settings. Restrict who
 - [ ] RBAC configuration stored at `k8s/argocd/argocd-rbac-cm.yaml`
 
 ---
+
+
 
 ### PETPLAT-116: Test GitOps loop end-to-end
 
@@ -2933,6 +3336,7 @@ Test the complete GitOps loop: CI builds and pushes image → CI updates image t
 **Technical Spec:** [GitOps with ArgoCD](./technical-spec.md#gitops-with-argocd), [CI/CD Pipeline](./technical-spec.md#cicd-pipeline)
 
 **Acceptance Criteria:**
+
 - [ ] Dev loop tested: push code → CI builds → CI updates dev values → ArgoCD auto-syncs → new version running
 - [ ] Prod loop tested: CI updates prod values → ArgoCD shows OutOfSync → manual sync → new version running
 - [ ] Rollback tested: revert image tag in Git → ArgoCD syncs previous version
@@ -2944,13 +3348,17 @@ Test the complete GitOps loop: CI builds and pushes image → CI updates image t
 
 ---
 
+
+
 ## Summary
 
-| Priority | Epics | Stories/Tasks |
-|----------|-------|---------------|
-| P0 | Cursor Agent Setup, Foundation, VPC, EKS, ECR, RDS, Secrets (Secrets Manager), K8s Base, CI Pipeline, Helm Charts, GitOps (ArgoCD) | 64 |
-| P1 | DNS, K8s Overlays, Observability, Security, Docs | 38 |
-| P2 | Scaling & Cost (Karpenter) | 6 |
-| **Total** | **17 epics (E-12 removed = 16 active)** | **108 stories/tasks** |
+
+| Priority  | Epics                                                                                                                              | Stories/Tasks         |
+| --------- | ---------------------------------------------------------------------------------------------------------------------------------- | --------------------- |
+| P0        | Cursor Agent Setup, Foundation, VPC, EKS, ECR, RDS, Secrets (Secrets Manager), K8s Base, CI Pipeline, Helm Charts, GitOps (ArgoCD) | 64                    |
+| P1        | DNS, K8s Overlays, Observability, Security, Docs                                                                                   | 38                    |
+| P2        | Scaling & Cost (Karpenter)                                                                                                         | 6                     |
+| **Total** | **17 epics (E-12 removed = 16 active)**                                                                                            | **108 stories/tasks** |
+
 
 **Estimated total story points:** ~341
