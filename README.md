@@ -44,7 +44,7 @@ That CIDR is the EKS public API allow-list. Re-apply after you reconnect. Never 
 | Cluster | Amazon EKS 1.35 | Standard support, AL2023 ARM nodes, API auth, CIDR-restricted public API |
 | Registry | Amazon ECR | One repo per service per env, lifecycle, scan-on-push |
 | Database | Amazon RDS MySQL 8.4 | db.t4g.micro, gp3, single-AZ, not publicly accessible |
-| DNS | Route 53 + ACM | TLS termination at ALB |
+| DNS | Route 53 + ACM (optional) | Learning path is HTTP to ALB DNS until a delegated domain exists (ADR-0016) |
 | Secrets | AWS Secrets Manager | External Secrets Operator (`external-secrets.io/v1`) |
 | Ingress | AWS Load Balancer Controller | `ingressClassName: alb` → API Gateway |
 | Observability | Prometheus + Grafana + Loki | In-cluster metrics and logs |

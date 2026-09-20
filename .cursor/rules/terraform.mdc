@@ -19,6 +19,10 @@ Environment root modules (`terraform/environments/{env}/network/` keep, `{env}/w
 EKS (cluster, OIDC, managed node group, IAM, Access Entries) is called from **workload**, never network (ADR-0013). Node group waits on the NAT ENI. Do not wire prod this epic.
 
 ECR private repositories are called from **network**, never workload (ADR-0014). Dev only this epic.
+
+RDS (MySQL 8.4, existing VPC RDS SG, `random_password` + Secrets Manager `petclinic/{env}/rds-credentials`) is called from **workload**, never network (ADR-0015). Dev only this epic. No `depends_on` NAT. Skip apply and prod.
+
+DNS (Route 53 + ACM) is optional and gated in **network** when `domain_name` is non-empty (ADR-0016). LBC IRSA is **workload**. Do not create a placeholder hosted zone.
 - `backend.tf` — S3 backend configuration (SSE-S3 / AES256). Bucket name is not committed; use `terraform/backend.hcl` from `./scripts/write-backend-config.sh`
 - `terraform.tfvars.example` — placeholder values (commit this, never real `*.tfvars` or `*.tfvars.json`). `aws_account_id` has no default.
 

@@ -47,3 +47,29 @@ output "eks_update_kubeconfig" {
   description = "Configure kubectl for this cluster"
   value       = module.eks.update_kubeconfig
 }
+
+output "rds_endpoint" {
+  description = "RDS MySQL hostname"
+  value       = module.rds.endpoint
+}
+
+output "rds_port" {
+  description = "RDS MySQL port"
+  value       = module.rds.port
+}
+
+output "rds_instance_id" {
+  description = "RDS instance identifier"
+  value       = module.rds.db_instance_id
+}
+
+output "rds_secret_arn" {
+  description = "Secrets Manager ARN for petclinic/dev/rds-credentials"
+  value       = module.rds.secret_arn
+  sensitive   = true
+}
+
+output "lbc_role_arn" {
+  description = "IRSA role ARN for aws-load-balancer-controller (helm install after E-3 apply)"
+  value       = aws_iam_role.lbc.arn
+}

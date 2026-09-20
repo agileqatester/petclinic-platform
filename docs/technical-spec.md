@@ -23,9 +23,9 @@
 | 4 | [Security Groups](#security-groups) | Not started |
 | 5 | [EKS Cluster](#eks-cluster) | Implemented |
 | 6 | [ECR Container Registry](#ecr-container-registry) | Implemented |
-| 7 | [RDS Database](#rds-database) | Not started |
+| 7 | [RDS Database](#rds-database) | Implemented |
 | 8 | [Secrets Management](#secrets-management) | Not started |
-| 9 | [DNS and Ingress](#dns-and-ingress) | Not started |
+| 9 | [DNS and Ingress](#dns-and-ingress) | Partial |
 | 10 | [Application Services](#application-services) | Not started |
 | 11 | [Kubernetes Manifests](#kubernetes-manifests) | Not started |
 | 12 | [Kubernetes Overlays](#kubernetes-overlays) | Not started |
@@ -105,8 +105,8 @@ These tags are applied via `default_tags` in the AWS provider configuration. Mod
 
 | Environment | State Key | Purpose |
 |-------------|-----------|---------|
-| Dev | `petclinic/dev/network/terraform.tfstate` | Keep stack (VPC + ECR) |
-| Dev | `petclinic/dev/workload/terraform.tfstate` | Destroy stack (NAT + EKS; later RDS/ALB) |
+| Dev | `petclinic/dev/network/terraform.tfstate` | Keep stack (VPC + ECR + optional Route 53/ACM) |
+| Dev | `petclinic/dev/workload/terraform.tfstate` | Destroy stack (NAT + EKS + RDS + ALB/LBC) |
 | Prod | `petclinic/prod/network/terraform.tfstate` | Keep stack (do not apply for day-to-day learning) |
 | Prod | `petclinic/prod/workload/terraform.tfstate` | Destroy stack |
 
@@ -127,7 +127,7 @@ These tags are applied via `default_tags` in the AWS provider configuration. Mod
 
 Private EKS nodes and RDS. Public subnets only for the internet-facing ALB and one `t4g.micro` NAT instance. S3 gateway endpoint (free). No NAT Gateway. No interface VPC endpoints. Security groups remain mandatory. See [ADR-0001](./adr/ADR-0001-private-nodes-nat-instance.md).
 
-**Budget habit (keep vs destroy):** network stack stays on (VPC, subnets, IGW, S3 gateway, SGs, route tables, **ECR** — idle VPC ~$0, ECR ~$1/mo after images exist). Learning stack is destroyed after each session (NAT instance + EIP, EKS, nodes, RDS, ALB). Dev only for day-to-day learning. Operator access is kubectl (EKS API `/32`) plus SSM Session Manager on nodes and NAT — no SSH, no bastion, no SSM VPCEs.
+**Budget habit (keep vs destroy):** network stack stays on (VPC, subnets, IGW, S3 gateway, SGs, route tables, **ECR**, **optional Route 53/ACM** — idle VPC ~$0, ECR ~$1/mo after images exist, hosted zone $0.50/mo only if a domain is set). Learning stack is destroyed after each session (NAT instance + EIP, EKS, nodes, RDS, ALB/LBC). Dev only for day-to-day learning. Operator access is kubectl (EKS API `/32`) plus SSM Session Manager on nodes and NAT — no SSH, no bastion, no SSM VPCEs.
 
 ### CIDR Allocation
 
@@ -401,7 +401,7 @@ ECR Private: 500 MB free tier, then $0.10/GB/month. With 8 services at ~200 MB e
 
 ## RDS Database
 
-**Implementation:** Not started — `terraform/modules/rds/` is a placeholder (`PETPLAT-22`, `PETPLAT-23`).
+**Implementation:** Implemented — `terraform/modules/rds/` wired from `terraform/environments/dev/workload/` (ADR-0015). Not applied. Prod not wired (`PETPLAT-27` skipped). Credentials in this module (`petclinic/{env}/rds-credentials`). No `depends_on` NAT. Skip PETPLAT-26 apply this epic.
 
 ### Instance Configuration
 
@@ -420,9 +420,11 @@ ECR Private: 500 MB free tier, then $0.10/GB/month. With 8 services at ~200 MB e
 | Deletion Protection | `false` | `true` |
 | DB Identifier | `petclinic-dev-mysql` | `petclinic-prod-mysql` |
 | Master Username | `petclinic` | `petclinic` |
-| Master Password | Generated via `random_password` | Generated via `random_password` |
+| Master Password | Generated in the RDS module via `random_password` (not a variable / tfvars) | same |
+| DB name | `petclinic` (shared; ADR-0003) | `petclinic` |
+| Terraform root | `environments/dev/workload` (ADR-0015) | skip this epic |
 
-> **Cost note:** db.t4g.micro (2 vCPU, 1 GiB) is AWS RDS free tier eligible (750 hrs/month for 12 months, 20 GB storage). Both envs use identical sizing for learning. Storage encryption uses the AWS-managed `aws/rds` key (no $1/month CMK). In production you would use Multi-AZ, larger instance classes, 30-day backups, deletion protection, and a final snapshot.
+> **Cost note:** `db.t4g.micro` OnDemand in eu-central-1 is **~$0.019/hour** (~$14/month if left 24/7). Free tier (750 hrs/12 months, 20 GB) can make a session ~$0, but 24/7 still burns the allowance — destroy with workload. Storage encryption uses the AWS-managed `aws/rds` key (no $1/month CMK). `max_allocated_storage = 20` matches allocated storage: **autoscaling is off**. In a real production you would use Multi-AZ, larger instance classes, 30-day backups, deletion protection, and a final snapshot.
 
 ### Parameter Group
 
@@ -496,7 +498,7 @@ AWS Secrets Manager is purpose-built for storing secrets (database credentials, 
 
 > **Note:** Secret names use forward-slash convention (`petclinic/{env}/...`). All secrets are encrypted with the default AWS KMS key (`aws/secretsmanager`).
 
-RDS credentials are created by the RDS module with `random_password` (16+ chars, special characters) and stored as a JSON object. The secrets module handles non-RDS secrets only.
+RDS credentials are created by the RDS module **in workload** (ADR-0015) with `random_password` (16+ chars, MySQL-safe special characters) and stored as a JSON object. `recovery_window_in_days = 0` so destroy does not leave a 30-day replica. The secrets module handles non-RDS secrets only.
 
 ### External Secrets Operator (ESO)
 
@@ -557,31 +559,31 @@ spec:
 
 ## DNS and Ingress
 
-**Implementation:** Not started — `terraform/modules/dns/` is a placeholder. No ALB controller or Ingress.
+**Implementation:** Partial (ADR-0016) — no Route 53/ACM this slice (`terraform/modules/dns/` remains a placeholder). LBC IRSA is in `terraform/environments/dev/workload/lbc.tf`. Ingress YAML at `k8s/base/ingress/ingress.yaml` (HTTP-first; do not apply). Helm values at `helm-values/aws-load-balancer-controller.yaml`. `helm install` waits on E-3 apply.
 
 ### ACM Certificate
 
 | Parameter | Value |
 |-----------|-------|
-| Domain | `*.{domain}` (wildcard) |
+| Domain | `*.{domain}` (wildcard) — **only if `domain_name` is set and NS are delegated** |
 | Validation Method | DNS (Route 53) |
-| Region | `eu-central-1` (same as ALB) |
+| Region | `eu-central-1` (same as ALB; not us-east-1) |
 
 ### Route 53
 
 | Parameter | Value |
 |-----------|-------|
-| Hosted Zone | `{domain}` (provided as variable) |
-| Dev Record | `petclinic-dev.{domain}` → ALB (A record, alias) |
-| Prod Record | `petclinic.{domain}` → ALB (A record, alias) |
+| Hosted Zone | `{domain}` as variable; **omit the module when empty** (ADR-0016). $0.50/zone/month only if created. |
+| Dev Record | `petclinic-dev.{domain}` → ALB (A record, alias) — **after** LBC creates the ALB (PETPLAT-31) |
+| Prod Record | `petclinic.{domain}` → ALB (A record, alias) — skip this epic |
 
 ### AWS Load Balancer Controller
 
 | Parameter | Value |
 |-----------|-------|
-| Installation | Helm chart (`aws-load-balancer-controller` from `eks.amazonaws.com/charts`) |
+| Installation | Helm chart (`aws-load-balancer-controller` from `eks.amazonaws.com/charts`) — **after E-3 apply** (ADR-0016). Author IAM/values now; do not `helm install` this epic. |
 | Namespace | `kube-system` |
-| Auth | IRSA (see [IRSA Roles](#irsa-roles)) |
+| Auth | IRSA in **workload** (OIDC dies with the cluster; see [IRSA Roles](#irsa-roles)) |
 | IngressClass | `alb` |
 
 ### Ingress Resource
@@ -595,9 +597,9 @@ metadata:
   annotations:
     alb.ingress.kubernetes.io/scheme: internet-facing
     alb.ingress.kubernetes.io/target-type: ip
-    alb.ingress.kubernetes.io/certificate-arn: "{acm-certificate-arn}"
+    alb.ingress.kubernetes.io/certificate-arn: "{acm-certificate-arn}"   # omit until ACM exists (ADR-0016)
     alb.ingress.kubernetes.io/listen-ports: '[{"HTTP": 80}, {"HTTPS": 443}]'
-    alb.ingress.kubernetes.io/ssl-redirect: "443"
+    alb.ingress.kubernetes.io/ssl-redirect: "443"                         # omit until ACM exists; HTTP-only until then
     alb.ingress.kubernetes.io/healthcheck-path: /actuator/health
     alb.ingress.kubernetes.io/healthcheck-port: "8080"
 spec:
@@ -1055,7 +1057,7 @@ Loki receives logs from FluentBit and exposes them as a Grafana datasource. Log-
 
 ## IRSA Roles
 
-**Implementation:** Not started.
+**Implementation:** Partial — LBC role `petclinic-{env}-lb-controller-role` is authored in **workload** (ADR-0016). Helm install waits on E-3 apply. Other IRSA roles are not started.
 
 Five IAM Roles for Service Accounts, each with OIDC trust policy scoped to a specific Kubernetes ServiceAccount. FluentBit no longer requires an IRSA role — it sends logs to Loki in-cluster.
 
@@ -1103,7 +1105,7 @@ Five IAM Roles for Service Accounts, each with OIDC trust policy scoped to a spe
 | EBS Volumes | Default encryption enabled | N/A | AWS managed |
 | ECR Images | AES256 | HTTPS | AWS managed |
 | Secrets Manager | KMS (AWS default `aws/secretsmanager` key) | HTTPS | AWS managed |
-| ALB | N/A | TLS termination (ACM cert) | ACM |
+| ALB | N/A | TLS at ALB **when ACM exists**; otherwise HTTP only (ADR-0016) | ACM |
 
 ### Kubernetes Network Policies
 
@@ -1165,12 +1167,12 @@ This is a learning project. Instance choices maximize AWS free tier eligibility.
 |----------|---------|----------|-----------|
 | EKS Control Plane | $73 | $73 | None — unavoidable cost |
 | EC2 Nodes (2x t4g.small) | $0 | $0 | Graviton free trial (750 hrs/mo until Dec 2026) |
-| RDS MySQL (db.t4g.micro) | $0 | $0 | RDS free tier (750 hrs/mo, 12 months) |
-| ALB | $0 | $0 | Free tier (750 hrs/mo, 12 months) |
+| RDS MySQL (db.t4g.micro) | ~$0 session / **~$0.019/h** OnDemand | same | Free-tier hours are an allowance, not “$0 if left on.” Destroy with workload (ADR-0015). |
+| ALB | ~$0 session / **~$0.027/h** + LCU | same | Created by LBC after Ingress apply; destroy with cluster (ADR-0016). Do not treat 24/7 as $0. |
 | S3 + DynamoDB (state) | ~$0 | ~$0 | SSE-S3 + PAY_PER_REQUEST; no CMK |
 | ECR Storage | ~$1 | ~$1 | 500 MB free, then $0.10/GB/month |
 | EBS (PVs — Prometheus, Grafana, Loki) | $2 | $2 | 30 GB gp3 |
-| Route 53 | $1 | $1 | $0.50/zone + queries |
+| Route 53 | $0 or $0.50 | same | $0.50/zone **only if `domain_name` is set** (ADR-0016). Skip until a delegated domain exists. |
 | Secrets Manager | $1 | $1 | $0.40/secret/month (~3 secrets) |
 | Data Transfer | $1 | $1 | 100 GB/mo free |
 | NAT instance (`t4g.micro`) | $0 session / ~$7 if left on | same | Destroy with EKS; not NAT Gateway |
@@ -1251,7 +1253,7 @@ Always-on network (VPC, subnets, IGW, S3 gateway) is ~$0. NAT instance is **~$7/
 
 ## Terraform Modules
 
-**Implementation:** Slice 1 done for `vpc` and `nat`. EKS module is implemented and called from **dev/workload** (ADR-0013). ECR is implemented and called from **dev/network** (ADR-0014). `rds`, `dns`, `secrets`, `observability` remain stubs. No `karpenter` module yet.
+**Implementation:** Slice 1 done for `vpc` and `nat`. EKS module is implemented and called from **dev/workload** (ADR-0013). ECR is implemented and called from **dev/network** (ADR-0014). RDS is implemented and called from **dev/workload** (ADR-0015). DNS module remains a stub (ADR-0016, deferred). `secrets`, `observability` remain stubs. No `karpenter` module yet.
 
 ### Module: `vpc`
 
@@ -1367,6 +1369,8 @@ Uses `aws_ecr_repository` with lifecycle policies, scan-on-push, and configurabl
 
 **Path:** `terraform/modules/rds/`
 
+Called from `terraform/environments/dev/workload/` (ADR-0015). Attach the **existing** VPC `rds_sg_id`; do not create a second RDS SG. Password is generated in-module (`random_password`), not a variable. `max_allocated_storage` equal to allocated storage is sent to AWS as `0` (autoscaling off). Prod is not wired this epic.
+
 | Input Variable | Type | Description | Default |
 |---------------|------|-------------|---------|
 | `project` | string | Project name | `"petclinic"` |
@@ -1394,9 +1398,11 @@ Uses `aws_ecr_repository` with lifecycle policies, scan-on-push, and configurabl
 
 **Path:** `terraform/modules/dns/`
 
+Called from `terraform/environments/dev/network/` only when `domain_name` is non-empty (ADR-0016). Empty string → `count = 0`. Do not create a placeholder zone. ACM in **eu-central-1**. Alias to ALB is PETPLAT-31 (needs a live ALB).
+
 | Input Variable | Type | Description | Default |
 |---------------|------|-------------|---------|
-| `domain_name` | string | Domain name for hosted zone | — |
+| `domain_name` | string | Public domain; empty skips the module | `""` |
 | `tags` | map(string) | Additional tags | `{}` |
 
 | Output | Type | Description |
@@ -1721,7 +1727,7 @@ spec:
 
 ## ADR Index
 
-**Implementation:** Partial — decisions are recorded in this table. Written files: ADR-0001, ADR-0012, ADR-0013, ADR-0014. Remaining rows are index-only until E-15.
+**Implementation:** Partial — decisions are recorded in this table. Written files: ADR-0001, ADR-0012, ADR-0013, ADR-0014, ADR-0015, ADR-0016. Remaining rows are index-only until E-15.
 
 Architecture Decision Records are stored in `docs/adr/`.
 
@@ -1741,3 +1747,5 @@ Architecture Decision Records are stored in `docs/adr/`.
 | ADR-0012 | AWS-managed encryption for state and RDS | Accepted | State bucket SSE-S3 (AES256). RDS uses `aws/rds`. No customer CMK. Drops ~$1/month. |
 | ADR-0013 | EKS control plane in the destroyable workload | Accepted | Dev EKS + MNG + OIDC + Access Entries in `environments/dev/workload` with NAT, not network. API `my_ip` `/32`. Auth `API`. E-3 uses default add-ons; PETPLAT-84 pins + EBS CSI. Skip prod this epic. |
 | ADR-0014 | ECR private repositories in the keep-stack network root | Accepted | Dev ECR in `environments/dev/network`, not workload. Private, scan-on-push, AES256. ~$1/mo. Skip prod. Apply is a later gate. ADR-0010 (private vs public) unchanged. |
+| ADR-0015 | RDS MySQL and credentials in the destroyable workload | Accepted | Dev MySQL 8.4 + `petclinic/{env}/rds-credentials` in `environments/dev/workload`, not network. Existing RDS SG. `random_password` in-module. Skip apply and prod this epic. ADR-0003 / 0006 unchanged. |
+| ADR-0016 | Skip Route 53/ACM without a domain; LBC waits on EKS | Accepted | Domain optional; gated dns module in network. Learning HTTP to ALB DNS. LBC IRSA in workload; Helm/Ingress apply wait on E-3. Skip placeholder zones. |

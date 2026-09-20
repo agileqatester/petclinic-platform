@@ -48,4 +48,18 @@ module "eks" {
   depends_on = [aws_route.private_default]
 }
 
-# RDS and ALB are later stories. Destroy this root after a session.
+module "rds" {
+  source = "../../../modules/rds"
+
+  project                 = var.project
+  environment             = var.environment
+  subnet_ids              = data.terraform_remote_state.network.outputs.private_subnet_ids
+  security_group_id       = data.terraform_remote_state.network.outputs.rds_sg_id
+  instance_class          = "db.t4g.micro"
+  multi_az                = false
+  skip_final_snapshot     = true
+  deletion_protection     = false
+  backup_retention_period = 7
+}
+
+# Destroy this root after a session (NAT + EKS + RDS + LBC IAM). ALB is created by LBC after Ingress apply.

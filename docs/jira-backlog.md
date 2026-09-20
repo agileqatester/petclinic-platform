@@ -862,7 +862,7 @@ Create `scripts/ecr-login.sh` that authenticates Docker to the ECR private regis
 # EPIC E-5: Database (RDS MySQL)
 
 **Priority:** P0
-**Description:** Provision RDS MySQL for the three database-backed services (customers, visits, vets). All three share a single `petclinic` database on the same RDS instance (confirmed by cross-service FK constraints). Include encryption, backup, and secrets.
+**Description:** Provision RDS MySQL for the three database-backed services (customers, visits, vets). All three share a single `petclinic` database on the same RDS instance (confirmed by cross-service FK constraints). Include encryption, backup, and secrets. **ADR-0015:** wire **dev/workload** only (destroy stack). Skip PETPLAT-26 apply and PETPLAT-27 prod this epic.
 **Blocked by:** E-2
 **Blocks:** E-7, E-8
 
@@ -880,25 +880,25 @@ Create `scripts/ecr-login.sh` that authenticates Docker to the ECR private regis
 **Blocked by:** PETPLAT-6, PETPLAT-8
 
 **Description:**
-Create the RDS module in `terraform/modules/rds/` for a MySQL instance.
+Create the RDS module in `terraform/modules/rds/` for a MySQL instance. Called from **dev/workload** (ADR-0015). Use the existing VPC RDS security group. Generate the master password in-module (`random_password`); do not take it from variables/tfvars.
 
 **Technical Spec:** [RDS Database](./technical-spec.md#rds-database), [Terraform Modules](./technical-spec.md#terraform-modules)
 
 **Acceptance Criteria:**
 
-- [ ] Module in `terraform/modules/rds/`
-- [ ] RDS MySQL 8.4 instance (single shared `petclinic` database for all 3 domain services)
-- [ ] DB subnet group using the VPC subnets
-- [ ] RDS security group: allow 3306 from EKS node SG only
-- [ ] Storage encryption enabled (KMS or default)
-- [ ] Multi-AZ configurable (false for both envs — cost optimization; teach students when to enable)
-- [ ] Instance class configurable (default: db.t4g.micro — free tier, ARM/Graviton)
-- [ ] Allocated storage configurable (default: 20 GB, autoscaling enabled)
-- [ ] Backup retention: 7 days (dev), 30 days (prod) — configurable
-- [ ] Skip final snapshot configurable (true for dev, false for prod)
-- [ ] DB parameter group with character set utf8mb4
-- [ ] Master username and password sourced from variables (will come from Secrets Manager)
-- [ ] Outputs: endpoint, port, db_instance_id
+- [x] Module in `terraform/modules/rds/`
+- [x] RDS MySQL 8.4 instance (single shared `petclinic` database for all 3 domain services)
+- [x] DB subnet group using the VPC subnets
+- [x] RDS security group: attach existing VPC `rds_sg_id` (3306 from EKS node SG only); do not create a second RDS SG
+- [x] Storage encryption enabled (omit `kms_key_id` — AWS-managed `aws/rds`, ADR-0012)
+- [x] Multi-AZ configurable (false for both envs — cost optimization; teach students when to enable)
+- [x] Instance class configurable (default: db.t4g.micro — free tier, ARM/Graviton)
+- [x] Allocated storage configurable (default: 20 GB); `max_allocated_storage = 20` (autoscaling off — spec table)
+- [x] Backup retention: 7 days (dev), 30 days (prod) — configurable
+- [x] Skip final snapshot configurable (true for dev, false for prod)
+- [x] DB parameter group with character set utf8mb4
+- [x] Master username `petclinic`; password generated in-module (`random_password`, MySQL-safe specials). PETPLAT-23 stores it in Secrets Manager.
+- [x] Outputs: endpoint, port, db_instance_id, secret_arn
 - [ ] `terraform validate` passes
 
 ---
@@ -915,18 +915,19 @@ Create the RDS module in `terraform/modules/rds/` for a MySQL instance.
 **Blocked by:** PETPLAT-22
 
 **Description:**
-Store the RDS master credentials in AWS Secrets Manager via Terraform. Generate a random password. Use Secrets Manager for encrypted storage of sensitive values.
+Store the RDS master credentials in AWS Secrets Manager **inside the RDS module** (not `terraform/modules/secrets/`). Generate a random password. Secret name `petclinic/{env}/rds-credentials`. `recovery_window_in_days = 0` so workload destroy does not leave a 30-day replica.
 
 **Technical Spec:** [RDS Database](./technical-spec.md#rds-database), [Secrets Management](./technical-spec.md#secrets-management)
 
 **Acceptance Criteria:**
 
-- [ ] Random password generated using `random_password` resource (16+ chars, special chars)
-- [ ] Secrets created using `aws_secretsmanager_secret` and `aws_secretsmanager_secret_version` resources
-- [ ] Secret name: `petclinic/{env}/rds-credentials` (single JSON secret with `username` and `password` keys)
-- [ ] RDS instance references the generated password
-- [ ] Secret values NOT in Terraform state as plaintext (use `sensitive = true`)
-- [ ] Output: secret ARNs (for External Secrets Operator later)
+- [x] Random password generated using `random_password` resource (16+ chars, MySQL-safe specials; exclude `/ @ " '`)
+- [x] Secrets created using `aws_secretsmanager_secret` and `aws_secretsmanager_secret_version` resources in the **RDS** module
+- [x] Secret name: `petclinic/{env}/rds-credentials` (single JSON secret with `username` and `password` keys)
+- [x] `recovery_window_in_days = 0`
+- [x] RDS instance references the generated password
+- [x] Secret values marked `sensitive = true` (redacts CLI; state still holds the value under SSE-S3)
+- [x] Output: secret ARNs (for External Secrets Operator later)
 - [ ] `terraform validate` passes
 
 ---
@@ -943,17 +944,17 @@ Store the RDS master credentials in AWS Secrets Manager via Terraform. Generate 
 **Blocked by:** PETPLAT-22
 
 **Description:**
-Document and implement how the shared `petclinic` MySQL database gets its schemas initialized for the three database-backed services (customers, visits, vets — 7 tables total). The app has SQL scripts in `src/main/resources/db/mysql/`. Options: let Spring auto-initialize, or run scripts manually/via init container. Schema init order matters: customers first (creates `pets` table), then vets (independent), then visits (FK to `pets`).
+Document how the shared `petclinic` MySQL database gets its schemas initialized. **Document only this epic** (ADR-0015): Spring auto-init (`spring.sql.init.mode=always`, `mysql` profile), customers → vets → visits. Do not copy SQL out of the app repo. Runtime test waits on apply + app deploy.
 
-**Technical Spec:** [RDS Database](./technical-spec.md#rds-database)
+**Technical Spec:** [RDS Database](./technical-spec.md#rds-database), [ADR-0015](./adr/ADR-0015-rds-mysql-workload.md)
 
 **Acceptance Criteria:**
 
-- [ ] Strategy documented: which approach is used (Spring auto-init vs manual)
-- [ ] One shared `petclinic` database created (all 3 services use the same DB — confirmed by cross-service FK: `visits.pet_id` → `pets.id`)
-- [ ] Schema scripts identified: customers (owners, pets, types), visits (visits), vets (vets, specialties, vet_specialties)
-- [ ] Connection string format documented for K8s ConfigMaps
-- [ ] Tested: services can connect and tables exist
+- [x] Strategy documented: Spring auto-init (`spring.sql.init.mode=always`, `mysql` profile)
+- [x] One shared `petclinic` database (`db_name` on the instance; ADR-0003)
+- [x] Schema scripts identified: customers (owners, pets, types), visits (visits), vets (vets, specialties, vet_specialties)
+- [x] Connection string format documented for K8s ConfigMaps (`jdbc:mysql://{rds-endpoint}:3306/petclinic`)
+- [x] Runtime test skipped until apply + app (PETPLAT-26)
 
 ---
 
@@ -969,19 +970,20 @@ Document and implement how the shared `petclinic` MySQL database gets its schema
 **Blocked by:** PETPLAT-22, PETPLAT-23, PETPLAT-9
 
 **Description:**
-Call the RDS module from dev environment.
+Call the RDS module from **`terraform/environments/dev/workload/`** (ADR-0015), not network. Private subnet IDs and existing `rds_sg_id` from network remote state. No `depends_on` NAT. **Wire this epic; apply is a later human gate** (same workload apply as NAT + EKS).
 
-**Technical Spec:** [RDS Database](./technical-spec.md#rds-database)
+**Technical Spec:** [RDS Database](./technical-spec.md#rds-database), [ADR-0015](./adr/ADR-0015-rds-mysql-workload.md)
 
 **Acceptance Criteria:**
 
-- [ ] RDS module called in dev main.tf
-- [ ] Instance class: db.t4g.micro (free tier)
-- [ ] Multi-AZ: false
-- [ ] Skip final snapshot: true
-- [ ] Backup retention: 7 days
-- [ ] Subnets and RDS SG from VPC module
-- [ ] `terraform plan` shows expected resources
+- [x] RDS module called in `terraform/environments/dev/workload/main.tf` (not network)
+- [x] Instance class: db.t4g.micro
+- [x] Multi-AZ: false
+- [x] Skip final snapshot: true
+- [x] Deletion protection: false
+- [x] Backup retention: 7 days
+- [x] Subnets and RDS SG from network remote state
+- [ ] `terraform plan` on **workload** shows RDS + secret (apply later)
 
 ---
 
@@ -996,10 +998,12 @@ Call the RDS module from dev environment.
 **Labels:** terraform, rds, deployment
 **Blocked by:** PETPLAT-25, PETPLAT-11
 
-**Description:**
-Deploy RDS to dev and verify connectivity from EKS pod.
+**Status:** Skipped this epic (ADR-0015 — skip apply; needs live EKS)
 
-**Technical Spec:** [RDS Database](./technical-spec.md#rds-database)
+**Description:**
+Deploy RDS to dev and verify connectivity from EKS pod. Later gate: same workload apply as NAT + EKS (not `-target`).
+
+**Technical Spec:** [RDS Database](./technical-spec.md#rds-database), [ADR-0015](./adr/ADR-0015-rds-mysql-workload.md)
 
 **Acceptance Criteria:**
 
@@ -1022,10 +1026,12 @@ Deploy RDS to dev and verify connectivity from EKS pod.
 **Labels:** terraform, rds
 **Blocked by:** PETPLAT-22, PETPLAT-23, PETPLAT-10
 
+**Status:** Skipped this epic (ADR-0015 — prod out of scope)
+
 **Description:**
 Call the RDS module from prod environment with prod-appropriate config.
 
-**Technical Spec:** [RDS Database](./technical-spec.md#rds-database)
+**Technical Spec:** [RDS Database](./technical-spec.md#rds-database), [ADR-0015](./adr/ADR-0015-rds-mysql-workload.md)
 
 **Acceptance Criteria:**
 
@@ -1042,7 +1048,7 @@ Call the RDS module from prod environment with prod-appropriate config.
 # EPIC E-6: DNS & Ingress
 
 **Priority:** P1
-**Description:** Set up Route 53 for DNS, ACM for TLS certificates, and AWS ALB Ingress Controller on EKS to expose the API Gateway to the internet via HTTPS.
+**Description:** Set up Route 53 for DNS, ACM for TLS certificates, and AWS ALB Ingress Controller on EKS to expose the API Gateway. **ADR-0016:** domain is optional (gated dns module in **dev/network**). Learning path is HTTP to ALB DNS until a delegated domain exists. LBC IRSA in **workload**; Helm/Ingress **apply** wait on E-3. Skip apply this epic.
 **Blocked by:** E-2, E-3
 **Blocks:** E-8 (ingress manifests)
 
@@ -1059,20 +1065,21 @@ Call the RDS module from prod environment with prod-appropriate config.
 **Labels:** terraform, dns, route53
 **Blocked by:** PETPLAT-5
 
-**Description:**
-Create the DNS module in `terraform/modules/dns/` with Route 53 hosted zone and ACM certificate.
+**Status:** Deferred this slice (user: no DNS yet). ADR-0016 still stands; module stays a placeholder.
 
-**Technical Spec:** [DNS and Ingress](./technical-spec.md#dns-and-ingress), [Terraform Modules](./technical-spec.md#terraform-modules)
+**Description:**
+Create the DNS module in `terraform/modules/dns/` with Route 53 hosted zone and ACM certificate. **Do not create resources when `domain_name` is empty** (ADR-0016). Never invent `example.com` as a live zone. ACM in eu-central-1.
+
+**Technical Spec:** [DNS and Ingress](./technical-spec.md#dns-and-ingress), [Terraform Modules](./technical-spec.md#terraform-modules), [ADR-0016](./adr/ADR-0016-dns-ingress-optional-domain.md)
 
 **Acceptance Criteria:**
 
 - [ ] Module in `terraform/modules/dns/`
-- [ ] Route 53 hosted zone created (domain name as variable)
-- [ ] ACM certificate requested with DNS validation
-- [ ] DNS validation records created in Route 53
-- [ ] Certificate validation completed (or uses `aws_acm_certificate_validation`)
-- [ ] Outputs: zone_id, zone_name_servers, certificate_arn
-- [ ] `terraform validate` passes
+- [ ] `domain_name` variable; empty skips zone + ACM (`count = 0`)
+- [ ] When set: Route 53 public hosted zone + ACM wildcard with DNS validation in eu-central-1
+- [ ] When set: DNS validation records in Route 53 and `aws_acm_certificate_validation`
+- [ ] Outputs: zone_id, name_servers, certificate_arn
+- [ ] `terraform validate` passes without a domain (no resources)
 
 ---
 
@@ -1088,19 +1095,17 @@ Create the DNS module in `terraform/modules/dns/` with Route 53 hosted zone and 
 **Blocked by:** PETPLAT-16
 
 **Description:**
-Install the AWS Load Balancer Controller on EKS using Helm (`aws-load-balancer-controller` chart). This controller watches for Ingress resources and provisions ALBs. Requires Helm CLI installed locally.
+Author IAM policy + IRSA role HCL for the AWS Load Balancer Controller in **workload** (OIDC from the cluster — ADR-0016). Helm values / install command in git. **`helm install` and verify wait on E-3 apply.** Do not add `helm_release` to the network root.
 
-**Technical Spec:** [DNS and Ingress](./technical-spec.md#dns-and-ingress), [IRSA Roles](./technical-spec.md#irsa-roles)
+**Technical Spec:** [DNS and Ingress](./technical-spec.md#dns-and-ingress), [IRSA Roles](./technical-spec.md#irsa-roles), [ADR-0016](./adr/ADR-0016-dns-ingress-optional-domain.md)
 
 **Acceptance Criteria:**
 
-- [ ] IAM policy for the LB controller created
-- [ ] IAM role for service account (IRSA) created using OIDC provider
-- [ ] Helm chart values file or install command generated for the LB controller
-- [ ] AWS Load Balancer Controller deployed to kube-system namespace via `helm install`
-- [ ] Controller pods running and healthy
-- [ ] IngressClass resource created for `alb`
-- [ ] Verified: controller can create ALBs (test with a simple Ingress)
+- [x] IAM policy for the LB controller authored (workload)
+- [x] IAM role for service account (IRSA) authored using OIDC provider (workload)
+- [x] Helm chart values file or install command generated for the LB controller
+- [ ] `helm install` / controller healthy / IngressClass `alb` — **blocked on E-3 apply**
+- [ ] Verified ALB create — **blocked on E-3 apply**
 
 ---
 
@@ -1116,18 +1121,18 @@ Install the AWS Load Balancer Controller on EKS using Helm (`aws-load-balancer-c
 **Blocked by:** PETPLAT-29, PETPLAT-28
 
 **Description:**
-Create the K8s Ingress resource that routes external HTTPS traffic to the API Gateway service.
+Write the K8s Ingress resource that routes external traffic to the API Gateway. **HTTP-first** (ADR-0016): omit `certificate-arn` and `ssl-redirect` until ACM exists. `target-type: ip`, ClusterIP. **Do not apply** this epic (no LBC).
 
-**Technical Spec:** [DNS and Ingress](./technical-spec.md#dns-and-ingress)
+**Technical Spec:** [DNS and Ingress](./technical-spec.md#dns-and-ingress), [ADR-0016](./adr/ADR-0016-dns-ingress-optional-domain.md)
 
 **Acceptance Criteria:**
 
-- [ ] Ingress manifest at `k8s/base/ingress/ingress.yaml`
-- [ ] Uses `alb` IngressClass
-- [ ] Annotations for internet-facing ALB, HTTPS redirect, ACM certificate ARN
-- [ ] Routes: `/` → api-gateway service on port 8080
-- [ ] Health check path: `/actuator/health`
-- [ ] ALB created and accessible after applying
+- [x] Ingress manifest at `k8s/base/ingress/ingress.yaml`
+- [x] Uses `alb` IngressClass (`spec.ingressClassName`)
+- [x] Annotations: internet-facing, `target-type: ip`, health `/actuator/health` on 8080
+- [x] Routes: `/` → api-gateway service on port 8080
+- [x] No `certificate-arn` / `ssl-redirect` until ACM exists
+- [ ] Apply / live ALB — **blocked on E-3 + PETPLAT-29**
 
 ---
 
@@ -1143,13 +1148,15 @@ Create the K8s Ingress resource that routes external HTTPS traffic to the API Ga
 **Blocked by:** PETPLAT-28, PETPLAT-30
 
 **Description:**
-Create a Route 53 A record (alias) pointing the domain to the ALB created by the ingress controller.
+Create a Route 53 A record (alias) pointing the domain to the ALB created by the ingress controller. **Blocked** until a delegated domain exists **and** LBC has created an ALB (ADR-0016).
 
-**Technical Spec:** [DNS and Ingress](./technical-spec.md#dns-and-ingress)
+**Technical Spec:** [DNS and Ingress](./technical-spec.md#dns-and-ingress), [ADR-0016](./adr/ADR-0016-dns-ingress-optional-domain.md)
+
+**Status:** Blocked this epic (needs domain + live ALB)
 
 **Acceptance Criteria:**
 
-- [ ] Route 53 alias record created (e.g., petclinic-dev.example.com → ALB)
+- [ ] Route 53 alias record created (`petclinic-dev.{domain}` → ALB)
 - [ ] Record type: A with alias to ALB
 - [ ] App accessible via domain name over HTTPS
 - [ ] HTTP redirects to HTTPS
@@ -1167,17 +1174,19 @@ Create a Route 53 A record (alias) pointing the domain to the ALB created by the
 **Labels:** terraform, dns
 **Blocked by:** PETPLAT-28
 
-**Description:**
-Call the DNS module from the dev environment.
+**Status:** Deferred this slice (no DNS module wire)
 
-**Technical Spec:** [DNS and Ingress](./technical-spec.md#dns-and-ingress)
+**Description:**
+Gated call of the DNS module from **`terraform/environments/dev/network/`** (ADR-0016). Empty `domain_name` → plan shows nothing. Do not put the zone in workload.
+
+**Technical Spec:** [DNS and Ingress](./technical-spec.md#dns-and-ingress), [ADR-0016](./adr/ADR-0016-dns-ingress-optional-domain.md)
 
 **Acceptance Criteria:**
 
-- [ ] DNS module called in dev main.tf
-- [ ] Domain configured
-- [ ] ACM certificate created and validated
-- [ ] `terraform plan` shows expected resources
+- [ ] DNS module called from `terraform/environments/dev/network/` with `count` / empty-string skip
+- [ ] `domain_name` from variable/tfvars (never committed; never `example.com` as a live zone)
+- [ ] Without a domain: `terraform plan` on **network** shows no Route 53/ACM
+- [ ] ACM created and validated — **only when a delegated domain is set** (later gate)
 
 ---
 
