@@ -42,3 +42,13 @@ output "alb_sg_id" {
   description = "ALB security group ID"
   value       = module.vpc.alb_sg_id
 }
+
+output "ecr_repository_urls" {
+  description = "Map of service name to ECR repository URL"
+  value       = module.ecr.repository_urls
+}
+
+output "ecr_repository_arns" {
+  description = "Map of service name to ECR repository ARN"
+  value       = module.ecr.repository_arns
+}

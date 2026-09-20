@@ -742,7 +742,7 @@ Call the EKS module from prod environment with prod-appropriate sizing. **Do not
 # EPIC E-4: Container Registry (ECR)
 
 **Priority:** P0
-**Description:** Create ECR private repositories for all 8 microservices with lifecycle policies, scan-on-push, and configurable tag immutability (MUTABLE dev, IMMUTABLE prod). Images stored at `{account}.dkr.ecr.eu-central-1.amazonaws.com/petclinic-{env}/{service}:{tag}`. Cost: ~$1/month beyond 500 MB free tier.
+**Description:** Create ECR private repositories for all 8 microservices with lifecycle policies, scan-on-push, and configurable tag immutability (MUTABLE dev, IMMUTABLE prod). Images stored at `{account}.dkr.ecr.eu-central-1.amazonaws.com/petclinic-{env}/{service}:{tag}`. Cost: ~$1/month beyond 500 MB free tier. **ADR-0014:** wire **dev/network** only (keep stack). Skip prod. PETPLAT-20 apply is a later gate.
 **Blocked by:** E-1
 **Blocks:** E-10, E-17
 
@@ -760,7 +760,7 @@ Call the EKS module from prod environment with prod-appropriate sizing. **Do not
 **Blocked by:** PETPLAT-5
 
 **Description:**
-Create the ECR module in `terraform/modules/ecr/` that provisions one ECR private repository per microservice using `aws_ecr_repository`. Accept a list of service names and environment as variables. Configure lifecycle policies, scan-on-push, and tag immutability per environment.
+Create the ECR module in `terraform/modules/ecr/` that provisions one ECR private repository per microservice using `aws_ecr_repository`. Accept a list of service names and environment as variables. Configure lifecycle policies, scan-on-push, and tag immutability per environment. Called from **dev/network** (ADR-0014).
 
 **Technical Spec:** [ECR Container Registry](./technical-spec.md#ecr-container-registry), [Terraform Modules](./technical-spec.md#terraform-modules)
 
@@ -813,18 +813,20 @@ Configure ECR lifecycle policies to automatically clean up old images and manage
 **Epic:** E-4 Container Registry (ECR)
 **Story Points:** 2
 **Labels:** terraform, ecr, deployment
-**Blocked by:** PETPLAT-18
+**Blocked by:** PETPLAT-18, PETPLAT-19
 
 **Description:**
-Call the ECR module from dev environment with all 8 service names and deploy. ECR repos are per-environment (separate repos for dev and prod to isolate images).
+Call the ECR module from **`terraform/environments/dev/network/`** (ADR-0014), not workload. All 8 service names. **Wire this epic; apply is a later human gate** (network `terraform plan` then explicit apply — does not require E-3).
 
-**Technical Spec:** [ECR Container Registry](./technical-spec.md#ecr-container-registry)
+**Technical Spec:** [ECR Container Registry](./technical-spec.md#ecr-container-registry), [ADR-0014](./adr/ADR-0014-ecr-repositories-keep-network.md)
 
 **Acceptance Criteria:**
 
+- [ ] ECR module called in `terraform/environments/dev/network/main.tf` (not workload)
 - [ ] ECR module called with service_names: [config-server, discovery-server, api-gateway, customers-service, visits-service, vets-service, genai-service, admin-server]
-- [ ] `terraform apply` succeeds
-- [ ] 8 ECR repositories visible in eu-central-1 under `petclinic-dev/` prefix
+- [ ] `image_tag_mutability = MUTABLE`
+- [ ] `terraform plan` on **network** shows 8 repositories (apply later)
+- [ ] After apply: 8 ECR repositories visible in eu-central-1 under `petclinic-dev/` prefix
 - [ ] Repository URIs accessible and correct
 - [ ] Scan-on-push enabled on all repos
 

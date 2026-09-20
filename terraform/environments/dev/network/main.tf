@@ -9,4 +9,22 @@ module "vpc" {
   availability_zones   = var.availability_zones
 }
 
-# Keep stack only. NAT default route is added by the workload root.
+module "ecr" {
+  source = "../../../modules/ecr"
+
+  project     = var.project
+  environment = var.environment
+  service_names = [
+    "config-server",
+    "discovery-server",
+    "api-gateway",
+    "customers-service",
+    "visits-service",
+    "vets-service",
+    "genai-service",
+    "admin-server",
+  ]
+  image_tag_mutability = "MUTABLE"
+}
+
+# Keep stack: VPC + ECR. NAT default route is added by the workload root.

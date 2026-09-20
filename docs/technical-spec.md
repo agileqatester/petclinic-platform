@@ -22,7 +22,7 @@
 | 3 | [VPC Network Design](#vpc-network-design) | Not started |
 | 4 | [Security Groups](#security-groups) | Not started |
 | 5 | [EKS Cluster](#eks-cluster) | Implemented |
-| 6 | [ECR Container Registry](#ecr-container-registry) | Not started |
+| 6 | [ECR Container Registry](#ecr-container-registry) | Implemented |
 | 7 | [RDS Database](#rds-database) | Not started |
 | 8 | [Secrets Management](#secrets-management) | Not started |
 | 9 | [DNS and Ingress](#dns-and-ingress) | Not started |
@@ -105,7 +105,7 @@ These tags are applied via `default_tags` in the AWS provider configuration. Mod
 
 | Environment | State Key | Purpose |
 |-------------|-----------|---------|
-| Dev | `petclinic/dev/network/terraform.tfstate` | Keep stack (VPC) |
+| Dev | `petclinic/dev/network/terraform.tfstate` | Keep stack (VPC + ECR) |
 | Dev | `petclinic/dev/workload/terraform.tfstate` | Destroy stack (NAT + EKS; later RDS/ALB) |
 | Prod | `petclinic/prod/network/terraform.tfstate` | Keep stack (do not apply for day-to-day learning) |
 | Prod | `petclinic/prod/workload/terraform.tfstate` | Destroy stack |
@@ -127,7 +127,7 @@ These tags are applied via `default_tags` in the AWS provider configuration. Mod
 
 Private EKS nodes and RDS. Public subnets only for the internet-facing ALB and one `t4g.micro` NAT instance. S3 gateway endpoint (free). No NAT Gateway. No interface VPC endpoints. Security groups remain mandatory. See [ADR-0001](./adr/ADR-0001-private-nodes-nat-instance.md).
 
-**Budget habit (keep vs destroy):** network stack stays on (VPC, subnets, IGW, S3 gateway, SGs, route tables — ~$0). Learning stack is destroyed after each session (NAT instance + EIP, EKS, nodes, RDS, ALB). Dev only for day-to-day learning. Operator access is kubectl (EKS API `/32`) plus SSM Session Manager on nodes and NAT — no SSH, no bastion, no SSM VPCEs.
+**Budget habit (keep vs destroy):** network stack stays on (VPC, subnets, IGW, S3 gateway, SGs, route tables, **ECR** — idle VPC ~$0, ECR ~$1/mo after images exist). Learning stack is destroyed after each session (NAT instance + EIP, EKS, nodes, RDS, ALB). Dev only for day-to-day learning. Operator access is kubectl (EKS API `/32`) plus SSM Session Manager on nodes and NAT — no SSH, no bastion, no SSM VPCEs.
 
 ### CIDR Allocation
 
@@ -319,7 +319,7 @@ aws eks update-kubeconfig --name petclinic-dev --region eu-central-1 --profile p
 
 ## ECR Container Registry
 
-**Implementation:** Not started — `terraform/modules/ecr/` is a placeholder (`PETPLAT-18`, `PETPLAT-19`).
+**Implementation:** Implemented — `terraform/modules/ecr/` wired from `terraform/environments/dev/network/` (ADR-0014). Not applied. Prod not wired. Apply is a later PETPLAT-20 gate (network plan/apply; does not require E-3). Encryption AES256 (ECR default; no customer CMK — ADR-0012). Private only (ADR-0010).
 
 ### Repository Configuration
 
@@ -370,6 +370,17 @@ docker push {account}.dkr.ecr.eu-central-1.amazonaws.com/petclinic-{env}/{servic
   "rules": [
     {
       "rulePriority": 1,
+      "description": "Expire untagged images after 7 days",
+      "selection": {
+        "tagStatus": "untagged",
+        "countType": "sinceImagePushed",
+        "countUnit": "days",
+        "countNumber": 7
+      },
+      "action": { "type": "expire" }
+    },
+    {
+      "rulePriority": 2,
       "description": "Keep last 10 images",
       "selection": {
         "tagStatus": "any",
@@ -1240,7 +1251,7 @@ Always-on network (VPC, subnets, IGW, S3 gateway) is ~$0. NAT instance is **~$7/
 
 ## Terraform Modules
 
-**Implementation:** Slice 1 done for `vpc` and `nat`. EKS module is implemented and called from **dev/workload** (ADR-0013). `ecr`, `rds`, `dns`, `secrets`, `observability` remain stubs. No `karpenter` module yet.
+**Implementation:** Slice 1 done for `vpc` and `nat`. EKS module is implemented and called from **dev/workload** (ADR-0013). ECR is implemented and called from **dev/network** (ADR-0014). `rds`, `dns`, `secrets`, `observability` remain stubs. No `karpenter` module yet.
 
 ### Module: `vpc`
 
@@ -1333,18 +1344,17 @@ Called from `terraform/environments/dev/workload/` (ADR-0013). Node `subnet_ids`
 
 **Path:** `terraform/modules/ecr/`
 
+Called from `terraform/environments/dev/network/` (ADR-0014). Dev: `image_tag_mutability = MUTABLE`. Prod later: `environments/prod/network`, `IMMUTABLE`. Not wired this epic.
+
 Uses `aws_ecr_repository` with lifecycle policies, scan-on-push, and configurable tag immutability.
 
 | Input Variable | Type | Description | Default |
 |---------------|------|-------------|---------|
 | `project` | string | Project name | `"petclinic"` |
+| `environment` | string | Environment | — |
 | `service_names` | list(string) | Service names for repos | — |
-| `tags` | map(string) | Additional tags | `{}` |
-
-| Output | Type | Description |
-|--------|------|-------------|
-| `environment` | string | Environment name | — |
 | `image_tag_mutability` | string | Tag mutability | `"MUTABLE"` |
+| `tags` | map(string) | Additional tags | `{}` |
 
 | Output | Type | Description |
 |--------|------|-------------|
@@ -1711,7 +1721,7 @@ spec:
 
 ## ADR Index
 
-**Implementation:** Partial — decisions are recorded in this table. Written files: ADR-0001, ADR-0012, ADR-0013. Remaining rows are index-only until E-15.
+**Implementation:** Partial — decisions are recorded in this table. Written files: ADR-0001, ADR-0012, ADR-0013, ADR-0014. Remaining rows are index-only until E-15.
 
 Architecture Decision Records are stored in `docs/adr/`.
 
@@ -1730,3 +1740,4 @@ Architecture Decision Records are stored in `docs/adr/`.
 | ADR-0011 | Secrets Manager for secrets storage | Accepted | Industry-standard secrets management ($0.40/secret/month, ~$1.20 total). Built-in rotation capability, fine-grained IAM. Teaches students the production-grade approach. |
 | ADR-0012 | AWS-managed encryption for state and RDS | Accepted | State bucket SSE-S3 (AES256). RDS uses `aws/rds`. No customer CMK. Drops ~$1/month. |
 | ADR-0013 | EKS control plane in the destroyable workload | Accepted | Dev EKS + MNG + OIDC + Access Entries in `environments/dev/workload` with NAT, not network. API `my_ip` `/32`. Auth `API`. E-3 uses default add-ons; PETPLAT-84 pins + EBS CSI. Skip prod this epic. |
+| ADR-0014 | ECR private repositories in the keep-stack network root | Accepted | Dev ECR in `environments/dev/network`, not workload. Private, scan-on-push, AES256. ~$1/mo. Skip prod. Apply is a later gate. ADR-0010 (private vs public) unchanged. |
