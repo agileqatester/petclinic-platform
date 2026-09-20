@@ -48,7 +48,7 @@ echo "  Dir: ${DIR}"
 echo "  Profile: ${AWS_PROFILE}"
 echo "============================================"
 echo ""
-echo "This writes a destroy plan for WORKLOAD only (NAT now; EKS/RDS/ALB later)."
+echo "This writes a destroy plan for WORKLOAD only (NAT + EKS; RDS/ALB later)."
 echo "Network stays. EKS has no stop — destroy is the budget control."
 echo ""
 read -r -p "Type DESTROY to write the destroy plan: " confirm
@@ -60,7 +60,7 @@ fi
 "${ROOT}/scripts/write-backend-config.sh"
 cd "${DIR}"
 terraform init -input=false -backend-config="${ROOT}/terraform/backend.hcl"
-terraform plan -destroy -var-file="${TFVARS}" -out plan.out
+terraform plan -destroy -var-file="${TFVARS}" -var="my_ip=$(curl -s https://checkip.amazonaws.com)/32" -out plan.out
 
 echo ""
 echo "Destroy plan saved to ${DIR}/plan.out"

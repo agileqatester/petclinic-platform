@@ -36,3 +36,13 @@ variable "nat_instance_type" {
   type        = string
   default     = "t4g.micro"
 }
+
+variable "my_ip" {
+  description = "Laptop public IP as x.x.x.x/32 for the EKS API. Pass at plan/apply; never put in tfvars."
+  type        = string
+
+  validation {
+    condition     = can(cidrhost(var.my_ip, 0)) && endswith(var.my_ip, "/32")
+    error_message = "my_ip must be a single host CIDR (x.x.x.x/32)."
+  }
+}

@@ -4,7 +4,7 @@
 >
 > **Convention:** Dev environment is built during the course. Prod values are defined here but implementation is a **student assignment** unless noted otherwise.
 >
-> **Last Updated:** 2026-09-19
+> **Last Updated:** 2026-09-20
 >
 > **Implementation tags** (this clone, code in git — not a live AWS inventory):
 > - **Implemented** — matching code exists and is wired (bootstrap/state also exists in AWS if `scripts/bootstrap-state.sh` was run)
@@ -21,7 +21,7 @@
 | 2 | [Terraform State Backend](#terraform-state-backend) | Implemented |
 | 3 | [VPC Network Design](#vpc-network-design) | Not started |
 | 4 | [Security Groups](#security-groups) | Not started |
-| 5 | [EKS Cluster](#eks-cluster) | Not started |
+| 5 | [EKS Cluster](#eks-cluster) | Implemented |
 | 6 | [ECR Container Registry](#ecr-container-registry) | Not started |
 | 7 | [RDS Database](#rds-database) | Not started |
 | 8 | [Secrets Management](#secrets-management) | Not started |
@@ -106,7 +106,7 @@ These tags are applied via `default_tags` in the AWS provider configuration. Mod
 | Environment | State Key | Purpose |
 |-------------|-----------|---------|
 | Dev | `petclinic/dev/network/terraform.tfstate` | Keep stack (VPC) |
-| Dev | `petclinic/dev/workload/terraform.tfstate` | Destroy stack (NAT; later EKS/RDS) |
+| Dev | `petclinic/dev/workload/terraform.tfstate` | Destroy stack (NAT + EKS; later RDS/ALB) |
 | Prod | `petclinic/prod/network/terraform.tfstate` | Keep stack (do not apply for day-to-day learning) |
 | Prod | `petclinic/prod/workload/terraform.tfstate` | Destroy stack |
 
@@ -232,7 +232,7 @@ RDS must never allow `0.0.0.0/0`. Public subnets host only ALB + NAT.
 
 ## EKS Cluster
 
-**Implementation:** Not started — `terraform/modules/eks/` is a placeholder (`PETPLAT-12`, `PETPLAT-13`).
+**Implementation:** Implemented — `terraform/modules/eks/` wired from `terraform/environments/dev/workload/` (ADR-0013). Not applied. Prod not wired (`PETPLAT-17` skipped). NAT + private default route must exist **before** the managed node group can become Ready. Control plane does not need NAT. S3 gateway is not a NAT substitute for ECR API or SSM. E-3 add-ons: EKS defaults (coredns, kube-proxy, vpc-cni). Pinned `aws_eks_addon` + EBS CSI + CNI NetworkPolicy = PETPLAT-84. kubectl auth: Access Entries, `authentication_mode = API`, no aws-auth. Cluster logging CloudWatch retention **7 days**.
 
 ### Cluster Configuration
 
@@ -243,7 +243,7 @@ RDS must never allow `0.0.0.0/0`. Public subnets host only ALB + NAT.
 | Support type | `STANDARD` (`upgrade_policy.support_type`) | `STANDARD` |
 | API Server Endpoint | Public + private. `public_access_cidrs` = **`my_ip` `/32`**, never `0.0.0.0/0`. Pass at apply (see Operator IP). | Same |
 | Authentication Mode | `API` (no aws-auth ConfigMap) | `API` |
-| Cluster Logging | `api`, `audit`, `authenticator` | `api`, `audit`, `authenticator` |
+| Cluster Logging | `api`, `audit`, `authenticator` (CloudWatch retention **7 days**) | Same |
 | Subnets | Private (nodes); public remain tagged for ALB | Same |
 
 ### Cluster IAM Role
@@ -291,7 +291,7 @@ Created from EKS cluster identity issuer URL. Required for IRSA (IAM Roles for S
 | `vpc-cni` | Pod networking | No |
 | `aws-ebs-csi-driver` | EBS PersistentVolumes (Prometheus, Grafana) | Yes (`AmazonEBSCSIDriverPolicy`) |
 
-Add-on versions pinned (not `latest`). Resolve conflicts strategy: `OVERWRITE` for initial setup. Enable VPC CNI NetworkPolicy (`enableNetworkPolicy: "true"`) so namespace NetworkPolicies actually enforce.
+E-3 (ADR-0013): do **not** manage add-ons in Terraform. EKS installs default vpc-cni, kube-proxy, and coredns. PETPLAT-84 later: pin versions (not `latest`), `aws-ebs-csi-driver` + IRSA, resolve conflicts `OVERWRITE`, enable VPC CNI NetworkPolicy (`enableNetworkPolicy: "true"`).
 
 ### Node launch template (required for IMDS)
 
@@ -306,6 +306,14 @@ metadata_options {
 ```
 
 Disk type: `gp3`, encrypted. Do not rely on node-group `disk_size` alone if the launch template owns the block device mapping.
+
+### Adding kubectl users
+
+The applying IAM principal gets an Access Entry with `AmazonEKSClusterAdminPolicy` (cluster scope). To grant another user or role: add `aws_eks_access_entry` + `aws_eks_access_policy_association` (do not use aws-auth). Then:
+
+```
+aws eks update-kubeconfig --name petclinic-dev --region eu-central-1 --profile petclinic
+```
 
 ---
 
@@ -1232,7 +1240,7 @@ Always-on network (VPC, subnets, IGW, S3 gateway) is ~$0. NAT instance is **~$7/
 
 ## Terraform Modules
 
-**Implementation:** Slice 1 done for `vpc` and `nat`. Environment roots are `{dev,prod}/{network,workload}/`. `eks`, `ecr`, `rds`, `dns`, `secrets`, `observability` remain stubs. No `karpenter` module yet.
+**Implementation:** Slice 1 done for `vpc` and `nat`. EKS module is implemented and called from **dev/workload** (ADR-0013). `ecr`, `rds`, `dns`, `secrets`, `observability` remain stubs. No `karpenter` module yet.
 
 ### Module: `vpc`
 
@@ -1289,12 +1297,15 @@ Destroyable learning stack. Single `t4g.micro` NAT instance (no NAT Gateway). Ca
 
 **Path:** `terraform/modules/eks/`
 
+Called from `terraform/environments/dev/workload/` (ADR-0013). Node `subnet_ids` are **private**. `api_allowed_cidrs` from `my_ip` (`/32`) at apply — never tfvars. Prod is not wired this epic.
+
 | Input Variable | Type | Description | Default |
 |---------------|------|-------------|---------|
 | `project` | string | Project name | `"petclinic"` |
 | `environment` | string | Environment | — |
 | `cluster_version` | string | Kubernetes version | `"1.35"` |
-| `subnet_ids` | list(string) | Subnet IDs for cluster | — |
+| `subnet_ids` | list(string) | Private subnet IDs for cluster and nodes | — |
+| `cluster_log_retention_days` | number | CloudWatch retention for control-plane logs | `7` |
 | `cluster_sg_id` | string | Cluster security group ID | — |
 | `node_sg_id` | string | Node security group ID | — |
 | `node_instance_types` | list(string) | Instance types for nodes | `["t4g.small"]` |
@@ -1315,6 +1326,7 @@ Destroyable learning stack. Single `t4g.micro` NAT instance (no NAT Gateway). Ca
 | `oidc_provider_url` | string | OIDC provider URL |
 | `node_group_name` | string | Managed node group name |
 | `node_role_arn` | string | Node IAM role ARN |
+| `update_kubeconfig` | string | `aws eks update-kubeconfig` command |
 
 ### Module: `ecr`
 
@@ -1698,9 +1710,9 @@ spec:
 
 ## ADR Index
 
-**Implementation:** Partial — decisions are recorded in this table. ADR-0001 and ADR-0012 are in `docs/adr/`; other `docs/adr/` files are not written yet (E-15).
+**Implementation:** Partial — decisions are recorded in this table. Written files: ADR-0001, ADR-0012, ADR-0013. Remaining rows are index-only until E-15.
 
-Architecture Decision Records are stored in `docs/adr/`. ADR-0001 and ADR-0012 are written; remaining rows are still index-only until E-15.
+Architecture Decision Records are stored in `docs/adr/`.
 
 | ADR | Title | Status | Summary |
 |-----|-------|--------|---------|
@@ -1716,3 +1728,4 @@ Architecture Decision Records are stored in `docs/adr/`. ADR-0001 and ADR-0012 a
 | ADR-0010 | ECR Private (production-correct pattern) | Accepted | Private ECR teaches the production pattern: IAM-controlled access, lifecycle policies, scan-on-push, tag immutability. Cost: ~$1/month — negligible. |
 | ADR-0011 | Secrets Manager for secrets storage | Accepted | Industry-standard secrets management ($0.40/secret/month, ~$1.20 total). Built-in rotation capability, fine-grained IAM. Teaches students the production-grade approach. |
 | ADR-0012 | AWS-managed encryption for state and RDS | Accepted | State bucket SSE-S3 (AES256). RDS uses `aws/rds`. No customer CMK. Drops ~$1/month. |
+| ADR-0013 | EKS control plane in the destroyable workload | Accepted | Dev EKS + MNG + OIDC + Access Entries in `environments/dev/workload` with NAT, not network. API `my_ip` `/32`. Auth `API`. E-3 uses default add-ons; PETPLAT-84 pins + EBS CSI. Skip prod this epic. |

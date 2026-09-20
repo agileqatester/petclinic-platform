@@ -33,4 +33,18 @@ resource "aws_route" "private_default" {
   network_interface_id   = module.nat.network_interface_id
 }
 
-# EKS, RDS, and ALB are later stories. Destroy this root after a session.
+module "eks" {
+  source = "../../../modules/eks"
+
+  project           = var.project
+  environment       = var.environment
+  subnet_ids        = data.terraform_remote_state.network.outputs.private_subnet_ids
+  cluster_sg_id     = data.terraform_remote_state.network.outputs.eks_cluster_sg_id
+  node_sg_id        = data.terraform_remote_state.network.outputs.eks_node_sg_id
+  api_allowed_cidrs = [var.my_ip]
+
+  # Module-level: Terraform cannot depends_on a variable. NAT is minutes; cluster is ~10.
+  depends_on = [aws_route.private_default]
+}
+
+# RDS and ALB are later stories. Destroy this root after a session.

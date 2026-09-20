@@ -2,9 +2,9 @@
 set -euo pipefail
 
 #
-# start-env.sh — Apply the learning stack (NAT now; EKS/RDS later).
+# start-env.sh — Apply the learning stack (NAT + EKS).
 #
-# Keeps the network stack. Does not start EKS (the control plane has no stop).
+# Keeps the network stack. EKS bills $0.10/hour and cannot be stopped — destroy after the session.
 #
 # Usage:
 #   ./scripts/start-env.sh dev
@@ -18,7 +18,7 @@ usage() {
   echo "Usage: $0 <environment>"
   echo "  environment: dev | prod"
   echo ""
-  echo "Applies terraform/environments/{env}/workload (NAT + private default routes)."
+  echo "Applies terraform/environments/{env}/workload (NAT + EKS)."
   echo "Network must already be applied. This script does not terraform apply a saved plan;"
   echo "use a saved plan.out from the workload directory for a gated apply."
   exit 1
@@ -63,6 +63,6 @@ echo "open the plan gate. Example:"
 echo "  ./scripts/write-backend-config.sh"
 echo "  cd ${DIR}"
 echo "  terraform init -backend-config=${ROOT}/terraform/backend.hcl"
-echo "  terraform plan -var-file=terraform.tfvars -out plan.out"
+echo "  terraform plan -var-file=terraform.tfvars -var=\"my_ip=\$(curl -s https://checkip.amazonaws.com)/32\" -out plan.out"
 echo "  terraform apply plan.out"
 echo "============================================"

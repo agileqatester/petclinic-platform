@@ -16,17 +16,17 @@ variable "cluster_version" {
 }
 
 variable "subnet_ids" {
-  description = "Subnet IDs for the cluster"
+  description = "Private subnet IDs for the cluster and managed node group"
   type        = list(string)
 }
 
 variable "cluster_sg_id" {
-  description = "Cluster security group ID"
+  description = "Additional cluster security group ID (from VPC module)"
   type        = string
 }
 
 variable "node_sg_id" {
-  description = "Node security group ID"
+  description = "Node security group ID (from VPC module)"
   type        = string
 }
 
@@ -61,14 +61,28 @@ variable "node_desired_size" {
 }
 
 variable "node_disk_size" {
-  description = "Disk size in GB"
+  description = "Root volume size in GB (gp3, encrypted)"
   type        = number
   default     = 20
 }
 
+variable "cluster_log_retention_days" {
+  description = "CloudWatch retention for control-plane logs"
+  type        = number
+  default     = 7
+}
+
 variable "api_allowed_cidrs" {
-  description = "CIDRs allowed to call the public EKS API (operator /32)"
+  description = "CIDRs allowed to call the public EKS API (operator /32). Never 0.0.0.0/0."
   type        = list(string)
+
+  validation {
+    condition = length(var.api_allowed_cidrs) > 0 && alltrue([
+      for cidr in var.api_allowed_cidrs :
+      can(cidrhost(cidr, 0)) && cidr != "0.0.0.0/0"
+    ])
+    error_message = "api_allowed_cidrs must be a non-empty list of CIDRs and must not include 0.0.0.0/0."
+  }
 }
 
 variable "tags" {

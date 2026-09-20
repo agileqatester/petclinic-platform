@@ -4,5 +4,5 @@ aws_account_id = "YOUR_AWS_ACCOUNT_ID"
 
 nat_instance_type = "t4g.micro"
 
-# Do not put my_ip here. When EKS is added, pass it at apply:
+# Do not put my_ip here. Pass it at every plan/apply:
 #   -var="my_ip=$(curl -s https://checkip.amazonaws.com)/32"

@@ -15,7 +15,7 @@ These are **sibling clones** (`../` from this repo). Never write, commit, or cop
 | `../saas-ntier-lab` | Private EKS nodes, `t4g.micro` NAT instance (`modules/nat/`), S3 gateway endpoint. Preferred network pattern vs all-public IGW when it fits the budget. |
 | `../ntier-app` | Private lab and interview docs. Same family as saas. Never commit its content here. |
 
-In chat, `@aidlc-workflows` / `@saas-ntier-lab` after the workspace is open. `docs/technical-spec.md` is the course contract; **accepted ADR-0001** overrides the old all-public crossword (private nodes + `t4g.micro` NAT instance in the destroyable stack). Implementers follow the spec as updated by that ADR.
+In chat, `@aidlc-workflows` / `@saas-ntier-lab` after the workspace is open. `docs/technical-spec.md` is the course contract; **accepted ADR-0001** overrides the old all-public crossword (private nodes + `t4g.micro` NAT instance in the destroyable stack). **Accepted ADR-0013:** EKS lives in `environments/{env}/workload` with NAT, not in network. Implementers follow the spec as updated by those ADRs.
 
 **Human gates:** you approve every stage (architecture → plan → code → review → terraform plan → apply). See `docs/ai-sdlc.md` and `.cursor/rules/human-gates.mdc`. Do not chain stages unless the user explicitly proceeds.
 

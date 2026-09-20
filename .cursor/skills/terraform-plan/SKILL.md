@@ -19,7 +19,8 @@ Run Terraform init and plan for the specified environment.
 3. Plan **network** first: `terraform/environments/{env}/network/`
    - `terraform init -backend-config=<repo>/terraform/backend.hcl`
    - `terraform plan -var-file=terraform.tfvars -out plan.out`
-4. Workload (`.../{env}/workload/`) only after network state exists in S3. Same init/plan flags.
+4. Workload (`.../{env}/workload/`) only after network state exists in S3. Same init; plan **must** pass the operator IP (never tfvars):
+   - `terraform plan -var-file=terraform.tfvars -var="my_ip=$(curl -s https://checkip.amazonaws.com)/32" -out plan.out`
 5. Summarize adds / changes / destroys. Warn explicitly if anything will be destroyed.
 
 ## Important

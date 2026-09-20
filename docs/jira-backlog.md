@@ -545,7 +545,7 @@ Run `terraform apply` for the dev environment and verify the VPC is created corr
 # EPIC E-3: EKS Cluster
 
 **Priority:** P0
-**Description:** Create the EKS cluster module with managed node groups, OIDC provider for IRSA (IAM Roles for Service Accounts), and required IAM roles. The cluster will host all 8 microservices.
+**Description:** Create the EKS cluster module with managed node groups, OIDC provider for IRSA (IAM Roles for Service Accounts), and required IAM roles. The cluster will host all 8 microservices. **ADR-0013:** wire **dev/workload** only (destroy stack, with NAT). Skip PETPLAT-17 (prod) this epic. Default add-ons only; PETPLAT-84 later.
 **Blocked by:** E-2
 **Blocks:** E-8, E-9, E-10, E-11
 
@@ -570,21 +570,25 @@ Create the EKS module in `terraform/modules/eks/` that provisions:
 - EKS cluster with Kubernetes version **1.35** (standard support), auth mode `API`, `upgrade_policy.support_type = STANDARD`
 - Cluster IAM role with AmazonEKSClusterPolicy
 - OIDC provider for IRSA (IAM Roles for Service Accounts)
-- Cluster / nodes in **private** subnets (ADR-0001); public subnets tagged for ALB
+- Cluster / nodes in **private** subnets (ADR-0001, ADR-0013); public subnets tagged for ALB
 - API server endpoint access: public+private, CIDR-restricted to operator `/32`
+- Additional cluster security group from VPC remote state (`eks_cluster_sg_id`)
+- CloudWatch log groups for `api`/`audit`/`authenticator` with **7-day** retention
+- Do **not** add `aws_eks_addon` in this story (PETPLAT-84)
 
 **Acceptance Criteria:**
 
-- [ ] Module in `terraform/modules/eks/`
-- [ ] EKS cluster created with specified K8s version
-- [ ] Cluster IAM role with AmazonEKSClusterPolicy attached
-- [ ] OIDC provider created from cluster identity issuer
-- [ ] Cluster uses private subnets (public subnets remain for ALB)
-- [ ] Cluster security group attached
-- [ ] Cluster logging enabled (api, audit, authenticator)
-- [ ] Public API CIDR-restricted via `api_allowed_cidrs` from `my_ip` `/32` (CLI `-var`, never tfvars) — never 0.0.0.0/0
-- [ ] Outputs: cluster_name, cluster_endpoint, cluster_ca_certificate, oidc_provider_arn, oidc_provider_url
-- [ ] `terraform validate` passes
+- [x] Module in `terraform/modules/eks/`
+- [x] EKS cluster created with specified K8s version
+- [x] Cluster IAM role with AmazonEKSClusterPolicy attached
+- [x] OIDC provider created from cluster identity issuer
+- [x] Cluster uses private subnets (public subnets remain for ALB)
+- [x] Cluster security group attached (`additional_security_group_ids` from VPC)
+- [x] Cluster logging enabled (api, audit, authenticator) with 7-day CloudWatch retention
+- [x] Public API CIDR-restricted via `api_allowed_cidrs` from `my_ip` `/32` (CLI `-var`, never tfvars) — never 0.0.0.0/0
+- [x] No `aws_eks_addon` resources
+- [x] Outputs: cluster_name, cluster_endpoint, cluster_ca_certificate, oidc_provider_arn, oidc_provider_url
+- [x] `terraform validate` passes
 
 ---
 
@@ -606,23 +610,25 @@ Add a managed node group configuration to the EKS module:
 
 - Node IAM role with required policies (EKSWorkerNodePolicy, EKS_CNI_Policy, EC2ContainerRegistryReadOnly, **SSMManagedInstanceCore**)
 - Configurable instance types, min/max/desired sizes
-- Nodes in **private** subnets (ADR-0001)
+- Nodes in **private** subnets (ADR-0001, ADR-0013)
 - Node labels and taints support
+- Terraform `depends_on` the NAT instance ENI / private default route so nodes are not created before egress exists
 
 **Acceptance Criteria:**
 
-- [ ] Managed node group resource created
-- [ ] Node IAM role with AmazonEKSWorkerNodePolicy, AmazonEKS_CNI_Policy, AmazonEC2ContainerRegistryReadOnly, AmazonSSMManagedInstanceCore
-- [ ] Instance types configurable (default: ["t4g.small"] for ARM/Graviton)
-- [ ] AMI type `AL2023_ARM_64_STANDARD`
-- [ ] Launch template with IMDSv2 `http_tokens = required` and `http_put_response_hop_limit = 1`
-- [ ] Scaling config: min_size, max_size, desired_size as variables
-- [ ] Nodes launched in private subnets
-- [ ] Disk size configurable (default: 20 GB gp3)
-- [ ] Node security group attached
-- [ ] Labels: environment, managed-by
-- [ ] Outputs: node_group_name, node_role_arn
-- [ ] `terraform validate` passes
+- [x] Managed node group resource created
+- [x] Node IAM role with AmazonEKSWorkerNodePolicy, AmazonEKS_CNI_Policy, AmazonEC2ContainerRegistryReadOnly, AmazonSSMManagedInstanceCore
+- [x] Instance types configurable (default: ["t4g.small"] for ARM/Graviton)
+- [x] AMI type `AL2023_ARM_64_STANDARD`
+- [x] Launch template with IMDSv2 `http_tokens = required` and `http_put_response_hop_limit = 1`
+- [x] Scaling config: min_size, max_size, desired_size as variables
+- [x] Nodes launched in private subnets
+- [x] Node group depends on NAT ENI + private `0.0.0.0/0` route
+- [x] Disk size configurable (default: 20 GB gp3)
+- [x] Node security group attached
+- [x] Labels: environment, managed-by
+- [x] Outputs: node_group_name, node_role_arn
+- [x] `terraform validate` passes
 
 ---
 
@@ -638,16 +644,16 @@ Add a managed node group configuration to the EKS module:
 **Blocked by:** PETPLAT-12
 
 **Description:**
-Add an EKS Access Entry for the deploying IAM principal (`authentication_mode = API` — do not use the aws-auth ConfigMap). Add outputs or a script for `aws eks update-kubeconfig`.
+Add an EKS Access Entry for the deploying IAM principal (`authentication_mode = API` — do not use the aws-auth ConfigMap) with `AmazonEKSClusterAdminPolicy` at cluster scope (ADR-0013). Add outputs or a script for `aws eks update-kubeconfig --name petclinic-dev --region eu-central-1 --profile petclinic`.
 
 **Technical Spec:** [EKS Cluster](./technical-spec.md#eks-cluster)
 
 **Acceptance Criteria:**
 
-- [ ] EKS access entry configured for the deploying IAM principal
-- [ ] Output: kubeconfig update command (`aws eks update-kubeconfig --name <cluster> --region <region>`)
+- [x] EKS access entry configured for the deploying IAM principal
+- [x] Output: kubeconfig update command (`aws eks update-kubeconfig --name <cluster> --region <region>`)
 - [ ] After apply, `kubectl get nodes` works
-- [ ] Documentation: how to add additional users/roles
+- [x] Documentation: how to add additional users/roles
 
 ---
 
@@ -663,17 +669,18 @@ Add an EKS Access Entry for the deploying IAM principal (`authentication_mode = 
 **Blocked by:** PETPLAT-12, PETPLAT-13, PETPLAT-9
 
 **Description:**
-Call the EKS module from dev environment with dev-appropriate sizing.
+Call the EKS module from **`terraform/environments/dev/workload/`** (ADR-0013), not network. Same root as NAT. Pass VPC/SG IDs from network remote state. Pass `my_ip` into `api_allowed_cidrs`. Node group must depend on NAT.
 
-**Technical Spec:** [EKS Cluster](./technical-spec.md#eks-cluster)
+**Technical Spec:** [EKS Cluster](./technical-spec.md#eks-cluster), [ADR-0013](./adr/ADR-0013-eks-control-plane-workload.md)
 
 **Acceptance Criteria:**
 
-- [ ] EKS module called in dev main.tf
-- [ ] Cluster name: petclinic-dev
-- [ ] Node group: t4g.small (ARM/Graviton free trial), min=2, max=4, desired=2
-- [ ] VPC and subnet IDs passed from VPC module outputs
-- [ ] Security group IDs passed
+- [x] EKS module called in `terraform/environments/dev/workload/main.tf` (not network)
+- [x] Cluster name: petclinic-dev
+- [x] Node group: t4g.small (ARM/Graviton free trial), min=2, max=4, desired=2
+- [x] Private subnet IDs and cluster/node SG IDs from network remote state
+- [x] `my_ip` required variable wired to `api_allowed_cidrs` (CLI `-var`, never tfvars)
+- [x] Node group depends on NAT ENI + private default route
 - [ ] `terraform plan` shows expected resources
 
 ---
@@ -690,13 +697,13 @@ Call the EKS module from dev environment with dev-appropriate sizing.
 **Blocked by:** PETPLAT-15, PETPLAT-11
 
 **Description:**
-Run `terraform apply` and verify the EKS cluster is operational.
+Run `terraform apply` on **dev/workload** (NAT + EKS together) and verify the cluster is operational. NAT must be up before nodes become Ready.
 
-**Technical Spec:** [EKS Cluster](./technical-spec.md#eks-cluster)
+**Technical Spec:** [EKS Cluster](./technical-spec.md#eks-cluster), [ADR-0013](./adr/ADR-0013-eks-control-plane-workload.md)
 
 **Acceptance Criteria:**
 
-- [ ] `terraform apply` succeeds
+- [ ] `terraform apply` on `terraform/environments/dev/workload` succeeds (with `my_ip`)
 - [ ] Cluster status: ACTIVE
 - [ ] Nodes visible: `kubectl get nodes` shows 2 Ready nodes
 - [ ] OIDC provider visible in IAM console
@@ -714,9 +721,10 @@ Run `terraform apply` and verify the EKS cluster is operational.
 **Story Points:** 1
 **Labels:** terraform, eks
 **Blocked by:** PETPLAT-12, PETPLAT-13, PETPLAT-10
+**Status:** Skipped this epic (ADR-0013 — prod out of scope until later)
 
 **Description:**
-Call the EKS module from prod environment with prod-appropriate sizing.
+Call the EKS module from prod environment with prod-appropriate sizing. **Do not implement in E-3.**
 
 **Technical Spec:** [EKS Cluster](./technical-spec.md#eks-cluster)
 
