@@ -133,6 +133,8 @@ resource "aws_instance" "this" {
     volume_size           = 8
   }
 
+  user_data_replace_on_change = true
+
   user_data = <<-EOF
     #!/bin/bash
     set -eux
@@ -140,9 +142,10 @@ resource "aws_instance" "this" {
     sysctl -p /etc/sysctl.d/99-nat.conf
     dnf install -y iptables-nft amazon-ssm-agent
     IFACE=$(ip -o -4 route show default | awk '{print $5}')
-    iptables -t nat -A POSTROUTING -o "$IFACE" -j MASQUERADE
+    iptables -P FORWARD DROP
     iptables -A FORWARD -m conntrack --ctstate RELATED,ESTABLISHED -j ACCEPT
-    iptables -A FORWARD -j ACCEPT
+    iptables -A FORWARD -s ${var.vpc_cidr} -o "$IFACE" -m conntrack --ctstate NEW -j ACCEPT
+    iptables -t nat -A POSTROUTING -s ${var.vpc_cidr} -o "$IFACE" -j MASQUERADE
     mkdir -p /etc/sysconfig
     iptables-save > /etc/sysconfig/iptables
     IPT_RESTORE="$(command -v iptables-restore)"

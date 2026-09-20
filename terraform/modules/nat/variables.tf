@@ -14,6 +14,16 @@ variable "vpc_id" {
   type        = string
 }
 
+variable "vpc_cidr" {
+  description = "VPC CIDR allowed as FORWARD/MASQUERADE source (private routes send only private-subnet traffic here)"
+  type        = string
+
+  validation {
+    condition     = can(cidrhost(var.vpc_cidr, 0)) && var.vpc_cidr != "0.0.0.0/0"
+    error_message = "vpc_cidr must be a real IPv4 CIDR and must not be 0.0.0.0/0."
+  }
+}
+
 variable "client_security_group_ids" {
   description = "Security groups allowed to send traffic through the NAT (EKS node SG). SG-to-SG, not a VPC CIDR."
   type        = list(string)

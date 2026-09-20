@@ -17,6 +17,7 @@ module "nat" {
   project           = var.project
   environment       = var.environment
   vpc_id            = data.terraform_remote_state.network.outputs.vpc_id
+  vpc_cidr          = data.terraform_remote_state.network.outputs.vpc_cidr
   public_subnet_ids = data.terraform_remote_state.network.outputs.public_subnet_ids
   client_security_group_ids = [
     data.terraform_remote_state.network.outputs.eks_node_sg_id,

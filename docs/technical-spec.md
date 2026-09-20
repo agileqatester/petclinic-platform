@@ -151,7 +151,7 @@ CIDRs are non-overlapping to allow future VPC peering if needed. Public subnets 
 | Public route table | `0.0.0.0/0` → IGW |
 | Private route table | `0.0.0.0/0` → NAT instance ENI (only while the learning stack is up) |
 | NAT Gateway | None (intentional) |
-| NAT instance | One `t4g.micro`, AZ-a public subnet, EIP, AL2023 ARM, source/dest check off, IMDSv2, SSM (not SSH), iptables MASQUERADE. Destroy with the learning stack. |
+| NAT instance | One `t4g.micro`, AZ-a public subnet, EIP, AL2023 ARM, source/dest check off, IMDSv2, SSM (not SSH). iptables: `FORWARD` policy DROP; RELATED,ESTABLISHED return; NEW from `vpc_cidr` out the WAN iface; MASQUERADE that CIDR only. Destroy with the learning stack. |
 | VPC Endpoints | S3 **gateway** only (free). No interface endpoints (ECR, STS, Secrets Manager, SSM). |
 
 ### Subnet Settings
@@ -1279,6 +1279,7 @@ Destroyable learning stack. Single `t4g.micro` NAT instance (no NAT Gateway). Ca
 | `project` | string | Project name | `"petclinic"` |
 | `environment` | string | Environment | — |
 | `vpc_id` | string | VPC ID | — |
+| `vpc_cidr` | string | VPC CIDR for iptables FORWARD/MASQUERADE | — |
 | `client_security_group_ids` | list(string) | SGs allowed to NAT (EKS node SG) | — |
 | `public_subnet_ids` | list(string) | Public subnets; instance in index 0 | — |
 | `instance_type` | string | NAT instance type | `"t4g.micro"` |
