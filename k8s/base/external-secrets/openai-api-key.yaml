@@ -1,0 +1,23 @@
+# Sync OpenAI API key (ADR-0017). Apply only after the SM secret exists (non-empty openai_api_key at workload apply).
+# Empty key means this ExternalSecret has nothing to sync; genai-service uses OPENAI_API_KEY=demo.
+apiVersion: external-secrets.io/v1
+kind: ExternalSecret
+metadata:
+  name: openai-api-key
+  namespace: petclinic-dev
+  labels:
+    app.kubernetes.io/name: openai-api-key
+    app.kubernetes.io/part-of: petclinic
+    app.kubernetes.io/managed-by: Helm
+    app.kubernetes.io/component: service
+spec:
+  refreshInterval: 1h
+  secretStoreRef:
+    name: aws-secrets-manager
+    kind: ClusterSecretStore
+  target:
+    name: openai-api-key
+  data:
+    - secretKey: OPENAI_API_KEY
+      remoteRef:
+        key: petclinic/dev/openai-api-key

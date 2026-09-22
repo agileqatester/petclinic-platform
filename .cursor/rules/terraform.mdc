@@ -23,6 +23,8 @@ ECR private repositories are called from **network**, never workload (ADR-0014).
 RDS (MySQL 8.4, existing VPC RDS SG, `random_password` + Secrets Manager `petclinic/{env}/rds-credentials`) is called from **workload**, never network (ADR-0015). Dev only this epic. No `depends_on` NAT. Skip apply and prod.
 
 DNS (Route 53 + ACM) is optional and gated in **network** when `domain_name` is non-empty (ADR-0016). LBC IRSA is **workload**. Do not create a placeholder hosted zone.
+
+Non-RDS secrets (`petclinic/{env}/openai-api-key`) and ESO IRSA are **workload** (ADR-0017). Create the OpenAI secret only when `openai_api_key` is non-empty. Skip git credential secrets. Skip apply this epic. No `kms:Decrypt` (ADR-0012).
 - `backend.tf` — S3 backend configuration (SSE-S3 / AES256). Bucket name is not committed; use `terraform/backend.hcl` from `./scripts/write-backend-config.sh`
 - `terraform.tfvars.example` — placeholder values (commit this, never real `*.tfvars` or `*.tfvars.json`). `aws_account_id` has no default.
 

@@ -46,3 +46,10 @@ variable "my_ip" {
     error_message = "my_ip must be a single host CIDR (x.x.x.x/32)."
   }
 }
+
+variable "openai_api_key" {
+  description = "OpenAI API key. Empty skips petclinic/dev/openai-api-key (ADR-0017). Pass via -var or TF_VAR_openai_api_key; never put in tfvars."
+  type        = string
+  default     = ""
+  sensitive   = true
+}

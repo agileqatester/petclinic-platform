@@ -50,3 +50,17 @@ variable "availability_zones" {
   description = "AZs for subnets"
   type        = list(string)
 }
+
+variable "my_ip" {
+  description = "Unused in this root (VPC + ECR). Declared so the same CLI -var=my_ip as workload is accepted. EKS API public_access_cidrs is workload only. Never put this in tfvars."
+  type        = string
+  default     = null
+  nullable    = true
+
+  validation {
+    condition = var.my_ip == null || (
+      can(cidrhost(var.my_ip, 0)) && endswith(var.my_ip, "/32") && var.my_ip != "0.0.0.0/0"
+    )
+    error_message = "my_ip, if set, must be a single host CIDR (x.x.x.x/32), never 0.0.0.0/0."
+  }
+}

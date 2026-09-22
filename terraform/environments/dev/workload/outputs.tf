@@ -73,3 +73,14 @@ output "lbc_role_arn" {
   description = "IRSA role ARN for aws-load-balancer-controller (helm install after E-3 apply)"
   value       = aws_iam_role.lbc.arn
 }
+
+output "eso_role_arn" {
+  description = "IRSA role ARN for external-secrets-sa (kubectl/helm install after E-3 apply)"
+  value       = aws_iam_role.eso.arn
+}
+
+output "openai_secret_arn" {
+  description = "Secrets Manager ARN for petclinic/dev/openai-api-key. Empty when openai_api_key is unset."
+  value       = module.secrets.openai_secret_arn
+  sensitive   = true
+}

@@ -18,7 +18,7 @@ resource "aws_db_subnet_group" "this" {
 resource "aws_db_parameter_group" "this" {
   name_prefix = "${local.name_prefix}-mysql-"
   family      = var.parameter_group_family
-  description = "utf8mb4 for ${local.identifier}"
+  description = "utf8mb4 + TLS for ${local.identifier}"
 
   parameter {
     name  = "character_set_server"
@@ -28,6 +28,13 @@ resource "aws_db_parameter_group" "this" {
   parameter {
     name  = "collation_server"
     value = "utf8mb4_unicode_ci"
+  }
+
+  # RDS MySQL boolean: 1/ON. Checkov CKV2_AWS_69 requires the string "1".
+  # Dynamic — no reboot. JDBC must use sslMode=REQUIRED or connections fail with 3159.
+  parameter {
+    name  = "require_secure_transport"
+    value = "1"
   }
 
   tags = merge(var.tags, {

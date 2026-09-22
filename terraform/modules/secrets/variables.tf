@@ -10,8 +10,9 @@ variable "environment" {
 }
 
 variable "openai_api_key" {
-  description = "OpenAI API key value"
+  description = "OpenAI API key. Empty skips the secret (ADR-0017). Pass via -var or TF_VAR_openai_api_key; never commit."
   type        = string
+  default     = ""
   sensitive   = true
 }
 

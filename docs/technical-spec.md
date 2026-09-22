@@ -4,7 +4,7 @@
 >
 > **Convention:** Dev environment is built during the course. Prod values are defined here but implementation is a **student assignment** unless noted otherwise.
 >
-> **Last Updated:** 2026-09-20
+> **Last Updated:** 2026-09-22
 >
 > **Implementation tags** (this clone, code in git — not a live AWS inventory):
 > - **Implemented** — matching code exists and is wired (bootstrap/state also exists in AWS if `scripts/bootstrap-state.sh` was run)
@@ -24,7 +24,7 @@
 | 5 | [EKS Cluster](#eks-cluster) | Implemented |
 | 6 | [ECR Container Registry](#ecr-container-registry) | Implemented |
 | 7 | [RDS Database](#rds-database) | Implemented |
-| 8 | [Secrets Management](#secrets-management) | Not started |
+| 8 | [Secrets Management](#secrets-management) | Implemented |
 | 9 | [DNS and Ingress](#dns-and-ingress) | Partial |
 | 10 | [Application Services](#application-services) | Not started |
 | 11 | [Kubernetes Manifests](#kubernetes-manifests) | Not started |
@@ -432,6 +432,7 @@ ECR Private: 500 MB free tier, then $0.10/GB/month. With 8 services at ~200 MB e
 |-----------|-------|---------|
 | `character_set_server` | `utf8mb4` | Full Unicode support |
 | `collation_server` | `utf8mb4_unicode_ci` | Unicode collation |
+| `require_secure_transport` | `1` (`ON`) | Reject plaintext MySQL (RDS TLS). JDBC: `sslMode=REQUIRED`. |
 
 ### Database Schema
 
@@ -474,20 +475,22 @@ All three database services use a shared `petclinic` database. Each service's sc
 ### Connection String Format
 
 ```
-jdbc:mysql://{rds-endpoint}:3306/petclinic
+jdbc:mysql://{rds-endpoint}:3306/petclinic?sslMode=REQUIRED
 ```
 
-Example: `jdbc:mysql://petclinic-dev-mysql.abc123.eu-central-1.rds.amazonaws.com:3306/petclinic`
+Example: `jdbc:mysql://petclinic-dev-mysql.abc123.eu-central-1.rds.amazonaws.com:3306/petclinic?sslMode=REQUIRED`
+
+`sslMode=REQUIRED` (MySQL Connector/J 8) encrypts the session. It does **not** verify the Amazon RDS CA. `VERIFY_CA` / `VERIFY_IDENTITY` need the RDS CA in the trust store (later, if the image can mount it). Without `sslMode=REQUIRED`, `require_secure_transport=ON` returns MySQL error 3159.
 
 ---
 
 ## Secrets Management
 
-**Implementation:** Not started — `terraform/modules/secrets/` is a placeholder (`PETPLAT-37`). No External Secrets Operator.
+**Implementation:** Implemented — `terraform/modules/secrets/` wired from `terraform/environments/dev/workload/` (ADR-0017). OpenAI secret only when `openai_api_key` is non-empty (default empty). ESO IRSA in `eso.tf`. ClusterSecretStore + ExternalSecret YAML in `k8s/base/external-secrets/`. Not applied. ESO install waits on E-3.
 
 ### Why AWS Secrets Manager
 
-AWS Secrets Manager is purpose-built for storing secrets (database credentials, API keys). It provides built-in rotation, cross-account access, and fine-grained IAM policies. At $0.40/secret/month (~$1.20/month for 3 secrets), the cost is minimal and teaches students the industry-standard approach.
+AWS Secrets Manager is purpose-built for storing secrets (database credentials, API keys). It provides built-in rotation, cross-account access, and fine-grained IAM policies. **$0.40/secret/month** in Frankfurt while the secret exists. Keep-stack secrets fight destroy-after-session. RDS + optional OpenAI live in **workload** (ADR-0015 / ADR-0017): **$0** after destroy (`recovery_window_in_days = 0`). Git credential secrets are skipped (public config repo).
 
 ### Secrets
 
@@ -741,7 +744,7 @@ API Gateway gets higher CPU (200m/1000m) because it handles all incoming traffic
 
 | Variable | Value | Source |
 |----------|-------|--------|
-| `SPRING_DATASOURCE_URL` | `jdbc:mysql://{rds-endpoint}:3306/petclinic` | ConfigMap |
+| `SPRING_DATASOURCE_URL` | `jdbc:mysql://{rds-endpoint}:3306/petclinic?sslMode=REQUIRED` | ConfigMap |
 | `SPRING_DATASOURCE_USERNAME` | From secret | K8s Secret (ESO) |
 | `SPRING_DATASOURCE_PASSWORD` | From secret | K8s Secret (ESO) |
 
@@ -1057,7 +1060,7 @@ Loki receives logs from FluentBit and exposes them as a Grafana datasource. Log-
 
 ## IRSA Roles
 
-**Implementation:** Partial — LBC role `petclinic-{env}-lb-controller-role` is authored in **workload** (ADR-0016). Helm install waits on E-3 apply. Other IRSA roles are not started.
+**Implementation:** Partial — LBC role `petclinic-{env}-lb-controller-role` and ESO role `petclinic-{env}-eso-role` are authored in **workload** (ADR-0016 / ADR-0017). Helm/ESO install waits on E-3 apply.
 
 Five IAM Roles for Service Accounts, each with OIDC trust policy scoped to a specific Kubernetes ServiceAccount. FluentBit no longer requires an IRSA role — it sends logs to Loki in-cluster.
 
@@ -1100,7 +1103,7 @@ Five IAM Roles for Service Accounts, each with OIDC trust policy scoped to a spe
 
 | Resource | Encryption at Rest | Encryption in Transit | Key |
 |----------|-------------------|----------------------|-----|
-| RDS MySQL | KMS (AWS default `aws/rds` key) | SSL available (not enforced by default) | AWS managed |
+| RDS MySQL | KMS (AWS default `aws/rds` key) | TLS required (`require_secure_transport=1`; JDBC `sslMode=REQUIRED`) | AWS managed |
 | S3 (state bucket) | SSE-S3 (AES256) | HTTPS enforced | AWS managed |
 | EBS Volumes | Default encryption enabled | N/A | AWS managed |
 | ECR Images | AES256 | HTTPS | AWS managed |
@@ -1151,7 +1154,7 @@ Same habit as saas-ntier-lab. The laptop public IP changes every connection. **D
 -var="my_ip=$(curl -s https://checkip.amazonaws.com)/32"
 ```
 
-`my_ip` has no default and must be `x.x.x.x/32`. That value is `public_access_cidrs` for the EKS API. After a reconnect, apply workload again with a fresh curl — do not open `0.0.0.0/0`. The Petclinic ALB stays 80/443 from the internet (unlike the saas lab HTTP ALB, which is also `/32`).
+The same `-var` is **accepted but unused** on **network** (VPC + ECR) so one CLI works in both roots. After a reconnect, apply **workload** again with a fresh curl — that is what updates the EKS API allow-list. Do not open `0.0.0.0/0`. The Petclinic ALB stays 80/443 from the internet (unlike the saas lab HTTP ALB, which is also `/32`).
 
 ---
 
@@ -1173,7 +1176,7 @@ This is a learning project. Instance choices maximize AWS free tier eligibility.
 | ECR Storage | ~$1 | ~$1 | 500 MB free, then $0.10/GB/month |
 | EBS (PVs — Prometheus, Grafana, Loki) | $2 | $2 | 30 GB gp3 |
 | Route 53 | $0 or $0.50 | same | $0.50/zone **only if `domain_name` is set** (ADR-0016). Skip until a delegated domain exists. |
-| Secrets Manager | $1 | $1 | $0.40/secret/month (~3 secrets) |
+| Secrets Manager | $0 after destroy; **$0.40** per secret while workload is up | same | RDS secret when RDS exists (ADR-0015). OpenAI **only** if `openai_api_key` is set (ADR-0017). No git-cred secrets. Keep-stack SM is $0. |
 | Data Transfer | $1 | $1 | 100 GB/mo free |
 | NAT instance (`t4g.micro`) | $0 session / ~$7 if left on | same | Destroy with EKS; not NAT Gateway |
 | **Total if left 24/7** | **~$80–87/mo** | **~$80–87/mo** | EKS control plane is the main cost |
@@ -1253,7 +1256,7 @@ Always-on network (VPC, subnets, IGW, S3 gateway) is ~$0. NAT instance is **~$7/
 
 ## Terraform Modules
 
-**Implementation:** Slice 1 done for `vpc` and `nat`. EKS module is implemented and called from **dev/workload** (ADR-0013). ECR is implemented and called from **dev/network** (ADR-0014). RDS is implemented and called from **dev/workload** (ADR-0015). DNS module remains a stub (ADR-0016, deferred). `secrets`, `observability` remain stubs. No `karpenter` module yet.
+**Implementation:** Slice 1 done for `vpc` and `nat`. EKS module is implemented and called from **dev/workload** (ADR-0013). ECR is implemented and called from **dev/network** (ADR-0014). RDS is implemented and called from **dev/workload** (ADR-0015). DNS module remains a stub (ADR-0016, deferred). Secrets module is implemented and called from **dev/workload** (ADR-0017). `observability` remains a stub. No `karpenter` module yet.
 
 ### Module: `vpc`
 
@@ -1415,18 +1418,18 @@ Called from `terraform/environments/dev/network/` only when `domain_name` is non
 
 **Path:** `terraform/modules/secrets/`
 
-Uses `aws_secretsmanager_secret` and `aws_secretsmanager_secret_version` resources.
+Called from `terraform/environments/dev/workload/` (ADR-0017). Create `petclinic/{env}/openai-api-key` only when `openai_api_key` is non-empty. Skip git credentials. `recovery_window_in_days = 0`. ESO IRSA is **not** in this module — workload `eso.tf` (OIDC from EKS).
 
 | Input Variable | Type | Description | Default |
 |---------------|------|-------------|---------|
 | `project` | string | Project name | `"petclinic"` |
 | `environment` | string | Environment | — |
-| `openai_api_key` | string | OpenAI API key value | — (sensitive) |
+| `openai_api_key` | string | OpenAI API key; empty skips the secret | `""` (sensitive) |
 | `tags` | map(string) | Additional tags | `{}` |
 
 | Output | Type | Description |
 |--------|------|-------------|
-| `openai_secret_arn` | string | Secrets Manager ARN for OpenAI API key |
+| `openai_secret_arn` | string | Secrets Manager ARN, empty when skipped |
 
 Note: RDS credentials are NOT managed by this module — they are in the `rds` module (PETPLAT-23).
 
@@ -1727,7 +1730,7 @@ spec:
 
 ## ADR Index
 
-**Implementation:** Partial — decisions are recorded in this table. Written files: ADR-0001, ADR-0012, ADR-0013, ADR-0014, ADR-0015, ADR-0016. Remaining rows are index-only until E-15.
+**Implementation:** Partial — decisions are recorded in this table. Written files: ADR-0001, ADR-0012, ADR-0013, ADR-0014, ADR-0015, ADR-0016, ADR-0017. Remaining rows are index-only until E-15.
 
 Architecture Decision Records are stored in `docs/adr/`.
 
@@ -1749,3 +1752,4 @@ Architecture Decision Records are stored in `docs/adr/`.
 | ADR-0014 | ECR private repositories in the keep-stack network root | Accepted | Dev ECR in `environments/dev/network`, not workload. Private, scan-on-push, AES256. ~$1/mo. Skip prod. Apply is a later gate. ADR-0010 (private vs public) unchanged. |
 | ADR-0015 | RDS MySQL and credentials in the destroyable workload | Accepted | Dev MySQL 8.4 + `petclinic/{env}/rds-credentials` in `environments/dev/workload`, not network. Existing RDS SG. `random_password` in-module. Skip apply and prod this epic. ADR-0003 / 0006 unchanged. |
 | ADR-0016 | Skip Route 53/ACM without a domain; LBC waits on EKS | Accepted | Domain optional; gated dns module in network. Learning HTTP to ALB DNS. LBC IRSA in workload; Helm/Ingress apply wait on E-3. Skip placeholder zones. |
+| ADR-0017 | Non-RDS secrets and ESO IRSA in the destroyable workload | Accepted | OpenAI SM secret gated in `environments/dev/workload`. ESO IRSA in workload. Skip git creds. YAML now; ESO install waits on E-3. Skip apply and prod. |

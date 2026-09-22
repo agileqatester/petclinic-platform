@@ -6,3 +6,6 @@ nat_instance_type = "t4g.micro"
 
 # Do not put my_ip here. Pass it at every plan/apply:
 #   -var="my_ip=$(curl -s https://checkip.amazonaws.com)/32"
+#
+# Do not put openai_api_key here. Empty skips the secret (genai uses demo).
+#   TF_VAR_openai_api_key='sk-...' terraform plan ...

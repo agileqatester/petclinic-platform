@@ -896,7 +896,7 @@ Create the RDS module in `terraform/modules/rds/` for a MySQL instance. Called f
 - [x] Allocated storage configurable (default: 20 GB); `max_allocated_storage = 20` (autoscaling off — spec table)
 - [x] Backup retention: 7 days (dev), 30 days (prod) — configurable
 - [x] Skip final snapshot configurable (true for dev, false for prod)
-- [x] DB parameter group with character set utf8mb4
+- [x] DB parameter group with character set utf8mb4 and `require_secure_transport=1`
 - [x] Master username `petclinic`; password generated in-module (`random_password`, MySQL-safe specials). PETPLAT-23 stores it in Secrets Manager.
 - [x] Outputs: endpoint, port, db_instance_id, secret_arn
 - [ ] `terraform validate` passes
@@ -953,7 +953,7 @@ Document how the shared `petclinic` MySQL database gets its schemas initialized.
 - [x] Strategy documented: Spring auto-init (`spring.sql.init.mode=always`, `mysql` profile)
 - [x] One shared `petclinic` database (`db_name` on the instance; ADR-0003)
 - [x] Schema scripts identified: customers (owners, pets, types), visits (visits), vets (vets, specialties, vet_specialties)
-- [x] Connection string format documented for K8s ConfigMaps (`jdbc:mysql://{rds-endpoint}:3306/petclinic`)
+- [x] Connection string format documented for K8s ConfigMaps (`jdbc:mysql://{rds-endpoint}:3306/petclinic?sslMode=REQUIRED`)
 - [x] Runtime test skipped until apply + app (PETPLAT-26)
 
 ---
@@ -1195,7 +1195,7 @@ Gated call of the DNS module from **`terraform/environments/dev/network/`** (ADR
 # EPIC E-7: Secrets Management (Secrets Manager)
 
 **Priority:** P0
-**Description:** Set up AWS Secrets Manager for all application secrets and install External Secrets Operator on EKS to sync secrets into Kubernetes Secrets. Secrets Manager provides encrypted storage and centralized secret management for the application.
+**Description:** Set up AWS Secrets Manager for non-RDS application secrets and External Secrets Operator CRs. **ADR-0017:** wire **dev/workload** only (destroy stack). OpenAI secret gated on non-empty `openai_api_key`. Skip git credentials. Skip ESO install/apply this epic (wait on E-3). Skip prod.
 **Blocked by:** E-3, E-5
 **Blocks:** E-8
 
@@ -1213,20 +1213,21 @@ Gated call of the DNS module from **`terraform/environments/dev/network/`** (ADR
 **Blocked by:** PETPLAT-5
 
 **Description:**
-Create the secrets module in `terraform/modules/secrets/` to manage **non-RDS** application secrets in AWS Secrets Manager using `aws_secretsmanager_secret` and `aws_secretsmanager_secret_version`. Note: RDS credentials are created by PETPLAT-23 in the RDS module — do NOT duplicate them here. This module handles all other application secrets.
+Create the secrets module in `terraform/modules/secrets/` for **non-RDS** secrets. Called from **dev/workload** (ADR-0017). Create `petclinic/{env}/openai-api-key` only when `openai_api_key` is non-empty. Skip git-username/password (public config repo). Do not duplicate RDS credentials.
 
-**Technical Spec:** [Secrets Management](./technical-spec.md#secrets-management), [Terraform Modules](./technical-spec.md#terraform-modules)
+**Technical Spec:** [Secrets Management](./technical-spec.md#secrets-management), [Terraform Modules](./technical-spec.md#terraform-modules), [ADR-0017](./adr/ADR-0017-eso-secrets-workload.md)
 
 **Acceptance Criteria:**
 
-- [ ] Module in `terraform/modules/secrets/`
-- [ ] Secrets created using `aws_secretsmanager_secret` and `aws_secretsmanager_secret_version` resources
-- [ ] Secrets created: `petclinic/{env}/openai-api-key`
-- [ ] Optional: `petclinic/{env}/config-server/git-username`, `petclinic/{env}/config-server/git-password`
-- [ ] RDS credentials NOT created here (owned by RDS module — PETPLAT-23)
-- [ ] Secret values NOT hardcoded — accept as variables
-- [ ] Outputs: secret ARNs for each
-- [ ] `terraform validate` passes
+- [x] Module in `terraform/modules/secrets/`
+- [x] Secrets created using `aws_secretsmanager_secret` and `aws_secretsmanager_secret_version` when `openai_api_key` is non-empty
+- [x] Secret name: `petclinic/{env}/openai-api-key` (plaintext)
+- [x] `recovery_window_in_days = 0`
+- [x] Git username/password secrets **skipped**
+- [x] RDS credentials NOT created here (owned by RDS module — PETPLAT-23)
+- [x] Secret values NOT hardcoded — sensitive variable, default `""`, never committed tfvars
+- [x] Outputs: `openai_secret_arn` (empty when skipped)
+- [x] `terraform validate` passes
 
 ---
 
@@ -1242,18 +1243,16 @@ Create the secrets module in `terraform/modules/secrets/` to manage **non-RDS** 
 **Blocked by:** PETPLAT-16, PETPLAT-37
 
 **Description:**
-Install External Secrets Operator (ESO) on the EKS cluster. ESO will sync secrets from AWS Secrets Manager into Kubernetes Secret objects using the `SecretsManager` provider.
+Author ESO install notes and ClusterSecretStore YAML. **`kubectl apply` / pods healthy wait on E-3 apply** (ADR-0017). Do not add `helm_release`.
 
-**Technical Spec:** [Secrets Management](./technical-spec.md#secrets-management), [IRSA Roles](./technical-spec.md#irsa-roles)
+**Technical Spec:** [Secrets Management](./technical-spec.md#secrets-management), [IRSA Roles](./technical-spec.md#irsa-roles), [ADR-0017](./adr/ADR-0017-eso-secrets-workload.md)
 
 **Acceptance Criteria:**
 
-- [ ] ESO installed via kubectl apply (CRDs + controller)
-- [ ] ESO pods running in `external-secrets` namespace
-- [ ] IAM role for service account (IRSA) created with Secrets Manager read permissions (`secretsmanager:GetSecretValue`, `secretsmanager:DescribeSecret`)
-- [ ] SecretStore or ClusterSecretStore resource created with `provider: aws` and `service: SecretsManager`
-- [ ] Test: create a sample ExternalSecret referencing a Secrets Manager secret and verify K8s Secret is created
-- [ ] Documented: how to add new secrets
+- [x] ClusterSecretStore YAML authored (`external-secrets.io/v1`, region eu-central-1, SA `external-secrets-sa`)
+- [x] Install command / notes (kubectl apply CRDs + controller; annotate SA with `eso_role_arn`)
+- [ ] ESO installed / pods running — **blocked on E-3 apply**
+- [ ] Sample ExternalSecret verify — **blocked on E-3 apply**
 
 ---
 
@@ -1269,19 +1268,19 @@ Install External Secrets Operator (ESO) on the EKS cluster. ESO will sync secret
 **Blocked by:** PETPLAT-34, PETPLAT-23
 
 **Description:**
-Create ExternalSecret resource that syncs RDS credentials from Secrets Manager into K8s.
+Write the ExternalSecret that syncs RDS credentials from Secrets Manager. **Do not apply** this epic (no ESO, no cluster). Namespace `petclinic-dev` (created in E-8).
 
-**Technical Spec:** [Secrets Management](./technical-spec.md#secrets-management)
+**Technical Spec:** [Secrets Management](./technical-spec.md#secrets-management), [ADR-0017](./adr/ADR-0017-eso-secrets-workload.md)
 
 **Acceptance Criteria:**
 
-- [ ] ExternalSecret manifest at `k8s/base/external-secrets/rds-credentials.yaml`
-- [ ] References Secrets Manager secret: `petclinic/{env}/rds-credentials` (single JSON secret)
-- [ ] Uses `remoteRef.key` with `remoteRef.property` to extract `username` and `password` from JSON
-- [ ] Creates K8s Secret with keys: `username`, `password`
-- [ ] Refresh interval: 1h
-- [ ] Secret created in the correct namespace
-- [ ] Verified: `kubectl get secret` shows the created secret
+- [x] ExternalSecret manifest at `k8s/base/external-secrets/rds-credentials.yaml`
+- [x] References Secrets Manager secret: `petclinic/{env}/rds-credentials` (single JSON secret)
+- [x] Uses `remoteRef.key` with `remoteRef.property` to extract `username` and `password` from JSON
+- [x] Creates K8s Secret with keys: `username`, `password`
+- [x] Refresh interval: 1h
+- [x] Namespace `petclinic-dev`
+- [ ] `kubectl get secret` verify — **blocked on E-3 + PETPLAT-34**
 
 ---
 
@@ -1297,16 +1296,16 @@ Create ExternalSecret resource that syncs RDS credentials from Secrets Manager i
 **Blocked by:** PETPLAT-34, PETPLAT-33
 
 **Description:**
-Create ExternalSecret for the GenAI service's OpenAI API key from Secrets Manager.
+Write the ExternalSecret for the GenAI OpenAI API key. Apply later **only if** the SM secret exists (non-empty `openai_api_key`). **Do not apply** this epic.
 
-**Technical Spec:** [Secrets Management](./technical-spec.md#secrets-management)
+**Technical Spec:** [Secrets Management](./technical-spec.md#secrets-management), [ADR-0017](./adr/ADR-0017-eso-secrets-workload.md)
 
 **Acceptance Criteria:**
 
-- [ ] ExternalSecret manifest at `k8s/base/external-secrets/openai-api-key.yaml`
-- [ ] References Secrets Manager secret: `petclinic/{env}/openai-api-key`
-- [ ] Creates K8s Secret with key: `OPENAI_API_KEY`
-- [ ] Verified: secret created in K8s
+- [x] ExternalSecret manifest at `k8s/base/external-secrets/openai-api-key.yaml`
+- [x] References Secrets Manager secret: `petclinic/{env}/openai-api-key`
+- [x] Creates K8s Secret with key: `OPENAI_API_KEY`
+- [ ] Verify — **blocked on E-3 + PETPLAT-34 + a real key**
 
 ---
 
@@ -1322,17 +1321,17 @@ Create ExternalSecret for the GenAI service's OpenAI API key from Secrets Manage
 **Blocked by:** PETPLAT-12
 
 **Description:**
-Create an IAM role with a trust policy for the ESO service account (IRSA) with permissions to read from Secrets Manager.
+Author the ESO IRSA role in **workload** (`eso.tf` next to `lbc.tf`, OIDC from the cluster — ADR-0017). Policy `GetSecretValue` + `DescribeSecret` on `petclinic/*` in eu-central-1. **No `kms:Decrypt`** (ADR-0012). **Skip apply** this epic.
 
-**Technical Spec:** [IRSA Roles](./technical-spec.md#irsa-roles)
+**Technical Spec:** [IRSA Roles](./technical-spec.md#irsa-roles), [ADR-0017](./adr/ADR-0017-eso-secrets-workload.md)
 
 **Acceptance Criteria:**
 
-- [ ] IAM role created with OIDC trust policy for the ESO service account
-- [ ] Policy: `secretsmanager:GetSecretValue`, `secretsmanager:DescribeSecret` on `arn:aws:secretsmanager:*:*:secret:petclinic/*`
-- [ ] Policy: `kms:Decrypt` for encrypted secrets (if using custom KMS key)
-- [ ] Role ARN output for use in ESO ServiceAccount annotation
-- [ ] `terraform validate` passes
+- [x] IAM role `petclinic-dev-eso-role` authored with OIDC trust for `external-secrets/external-secrets-sa`
+- [x] Policy: `secretsmanager:GetSecretValue`, `secretsmanager:DescribeSecret` on `arn:aws:secretsmanager:eu-central-1:{account}:secret:petclinic/*` (account from data source, never committed)
+- [x] No `kms:Decrypt` (no customer CMK)
+- [x] Output `eso_role_arn`
+- [x] `terraform validate` passes
 
 ---
 

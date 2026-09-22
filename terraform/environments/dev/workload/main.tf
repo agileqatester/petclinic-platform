@@ -62,4 +62,12 @@ module "rds" {
   backup_retention_period = 7
 }
 
-# Destroy this root after a session (NAT + EKS + RDS + LBC IAM). ALB is created by LBC after Ingress apply.
+module "secrets" {
+  source = "../../../modules/secrets"
+
+  project        = var.project
+  environment    = var.environment
+  openai_api_key = var.openai_api_key
+}
+
+# Destroy this root after a session (NAT + EKS + RDS + LBC/ESO IAM + optional OpenAI secret). ALB is created by LBC after Ingress apply.
