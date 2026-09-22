@@ -1,0 +1,140 @@
+# Reference build workflow (ADR-0020). Copy this file into the application fork
+# at .github/workflows/build-push.yml. It does not run from petclinic-platform.
+# Do not commit an AWS account ID. Set fork secrets:
+#   AWS_REGION=eu-central-1
+#   AWS_ROLE_ARN=<github_actions_role_arn from the network stack, after apply>
+#   AWS_ACCOUNT_ID=<12-digit account id>
+#   PLATFORM_REPO_TOKEN=<PAT that can send repository_dispatch to the platform repo>
+# Set PLATFORM_REPO below to org/petclinic-platform before the first run.
+name: Build and push
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+env:
+  PLATFORM_REPO: REPLACE_WITH_ORG/petclinic-platform
+
+jobs:
+  changes:
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+    outputs:
+      services: ${{ steps.filter.outputs.changes }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Detect changed services
+        uses: dorny/paths-filter@ceb8a2b8f2d89434be7ff52d3de7ec3738c5cc9d # v4.0.3
+        id: filter
+        with:
+          filters: |
+            config-server:
+              - 'spring-petclinic-config-server/**'
+            discovery-server:
+              - 'spring-petclinic-discovery-server/**'
+            api-gateway:
+              - 'spring-petclinic-api-gateway/**'
+            customers-service:
+              - 'spring-petclinic-customers-service/**'
+            visits-service:
+              - 'spring-petclinic-visits-service/**'
+            vets-service:
+              - 'spring-petclinic-vets-service/**'
+            genai-service:
+              - 'spring-petclinic-genai-service/**'
+            admin-server:
+              - 'spring-petclinic-admin-server/**'
+
+  build:
+    needs: changes
+    if: needs.changes.outputs.services != '[]'
+    runs-on: ubuntu-24.04
+    permissions:
+      id-token: write
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        service: ${{ fromJson(needs.changes.outputs.services) }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Set up JDK 17
+        uses: actions/setup-java@de7274f081f381c8f8158605e0321c36c376e2e6 # v6.0.1
+        with:
+          distribution: temurin
+          java-version: "17"
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@99012661954931238ded8c8b007157a8430204e1 # v4.4.0
+      - name: Set up Buildx
+        uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+      - name: Use the Buildx builder
+        run: docker buildx inspect --bootstrap
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@e1253824e5c10ff9df46874f81ed3ec929e19cfd # v6.3.0
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
+          aws-region: ${{ secrets.AWS_REGION }}
+      - name: Login to ECR
+        uses: aws-actions/amazon-ecr-login@03f1aad4c6c7ffd436567f42f9384779290529bd # v2.1.7
+      - name: Maven image
+        env:
+          DOCKER_DEFAULT_PLATFORM: linux/arm64
+        run: ./mvnw -pl spring-petclinic-${{ matrix.service }} -am clean install -P buildDocker -Dcontainer.platform=linux/arm64
+      - name: Resolve local image
+        id: image
+        run: |
+          repo="springcommunity/spring-petclinic-${{ matrix.service }}"
+          ref=$(docker images "$repo" --format '{{.Repository}}:{{.Tag}}' | head -n 1)
+          if [[ -z "$ref" ]]; then
+            echo "Maven did not produce ${repo}" >&2
+            exit 1
+          fi
+          arch=$(docker image inspect "$ref" --format '{{.Architecture}}')
+          if [[ "$arch" != "arm64" ]]; then
+            echo "expected linux/arm64, got ${arch} for ${ref}" >&2
+            exit 1
+          fi
+          echo "ref=${ref}" >> "$GITHUB_OUTPUT"
+      - name: Trivy scan
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          image-ref: ${{ steps.image.outputs.ref }}
+          severity: CRITICAL
+          exit-code: "1"
+      - name: Push
+        env:
+          REGISTRY: ${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.${{ secrets.AWS_REGION }}.amazonaws.com
+          SHA: ${{ github.sha }}
+        run: |
+          dest="${REGISTRY}/petclinic-dev/${{ matrix.service }}:${SHA::7}"
+          docker tag "${{ steps.image.outputs.ref }}" "$dest"
+          docker push "$dest"
+
+  dispatch:
+    needs: [changes, build]
+    if: needs.changes.outputs.services != '[]' && needs.build.result == 'success'
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+    steps:
+      - name: Notify platform repo
+        env:
+          GH_TOKEN: ${{ secrets.PLATFORM_REPO_TOKEN }}
+          SERVICES_JSON: ${{ needs.changes.outputs.services }}
+          SHA: ${{ github.sha }}
+        run: |
+          if [[ "${PLATFORM_REPO}" == REPLACE_WITH_ORG/* ]]; then
+            echo "Set PLATFORM_REPO at the top of this workflow before copying it into the fork." >&2
+            exit 1
+          fi
+          services=$(jq -r 'join(" ")' <<< "$SERVICES_JSON")
+          gh api "repos/${PLATFORM_REPO}/dispatches" \
+            -f event_type='app-image-built' \
+            -f "client_payload[sha]=${SHA::7}" \
+            -f "client_payload[services]=${services}"

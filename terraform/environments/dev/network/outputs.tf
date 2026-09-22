@@ -52,3 +52,8 @@ output "ecr_repository_arns" {
   description = "Map of service name to ECR repository ARN"
   value       = module.ecr.repository_arns
 }
+
+output "github_actions_role_arn" {
+  description = "IAM role ARN for the application-fork GitHub Actions OIDC trust (ADR-0020). Not applied until a later network apply."
+  value       = aws_iam_role.github_actions.arn
+}

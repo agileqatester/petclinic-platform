@@ -51,6 +51,16 @@ variable "availability_zones" {
   type        = list(string)
 }
 
+variable "github_repository" {
+  description = "GitHub repository allowed to assume petclinic-github-actions-role, as org/name (the application fork). Set in terraform.tfvars. Exact repo on main only. Never commit the real value if it is private; a placeholder in the example is fine."
+  type        = string
+
+  validation {
+    condition     = can(regex("^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$", var.github_repository))
+    error_message = "github_repository must be org/name with no wildcards."
+  }
+}
+
 variable "my_ip" {
   description = "Unused in this root (VPC + ECR). Declared so the same CLI -var=my_ip as workload is accepted. EKS API public_access_cidrs is workload only. Never put this in tfvars."
   type        = string

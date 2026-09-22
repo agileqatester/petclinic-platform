@@ -7,5 +7,9 @@ public_subnet_cidrs  = ["10.0.1.0/24", "10.0.2.0/24"]
 private_subnet_cidrs = ["10.0.11.0/24", "10.0.12.0/24"]
 availability_zones   = ["eu-central-1a", "eu-central-1b"]
 
+# Application fork allowed to push images (ADR-0020). Uncomment and set org/name in terraform.tfvars.
+# The next network plan fails until this is set. Do not use a wildcard.
+# github_repository = "YOUR_GITHUB_ORG/YOUR_APP_FORK"
+
 # Do not put my_ip here. Optional on this root (ignored). Workload uses it for the EKS API:
 #   -var="my_ip=$(curl -s https://checkip.amazonaws.com)/32"

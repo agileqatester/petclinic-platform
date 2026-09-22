@@ -59,7 +59,7 @@ E-1 (Foundation)
  E-11 (Observability) ─┘
  E-13 (Security) — can run in parallel after E-3
  E-15 (Docs) — ongoing, finalize after all others
- E-16 (Helm Charts) — depends on E-8 (base manifests define what gets templated)
+ E-16 (Helm Charts) — depends on E-8 namespaces and the E-9 env contract (ADR-0019)
  E-17 (ArgoCD) — depends on E-3 (EKS), E-16 (Helm charts), E-4 (ECR)
 ```
 
@@ -1340,7 +1340,7 @@ Author the ESO IRSA role in **workload** (`eso.tf` next to `lbc.tf`, OIDC from t
 # EPIC E-8: Kubernetes Manifests — Base
 
 **Priority:** P0
-**Description:** Create base Kubernetes manifests for all 8 microservices. Each service gets its own directory with Deployment, Service, ConfigMap, and ServiceAccount. Respect startup order dependencies.
+**Description:** **ADR-0018:** namespaces and NetworkPolicies only. Write `k8s/base/namespaces.yaml` (dev + prod, PSA) and `k8s/base/network-policies/` (spec table; API gateway from public subnet CIDRs). Git only — no `kubectl apply`. **PETPLAT-39–44** Deployments, Services, ConfigMaps, probes, JDBC, and init containers are obsolete as YAML; Helm owns them (E-16). Do not create `k8s/base/{service}/`.
 **Blocked by:** E-3, E-5, E-7
 **Blocks:** E-9, E-10, E-11
 
@@ -1358,15 +1358,16 @@ Author the ESO IRSA role in **workload** (`eso.tf` next to `lbc.tf`, OIDC from t
 **Blocked by:** PETPLAT-16
 
 **Description:**
-Create namespace definitions for dev and prod.
+Create namespace definitions for dev and prod, including Pod Security Admission labels (ADR-0018). Git only — no `kubectl apply`.
 
-**Technical Spec:** [Kubernetes Manifests](./technical-spec.md#kubernetes-manifests)
+**Technical Spec:** [Kubernetes Manifests](./technical-spec.md#kubernetes-manifests), [ADR-0018](./adr/ADR-0018-e8-namespaces-network-policies.md)
 
 **Acceptance Criteria:**
 
-- [ ] `k8s/base/namespaces.yaml` with petclinic-dev and petclinic-prod namespaces
-- [ ] Namespaces labeled: app.kubernetes.io/part-of=petclinic, environment={dev,prod}
-- [ ] `kubectl apply --dry-run=client` passes
+- [x] `k8s/base/namespaces.yaml` with petclinic-dev and petclinic-prod namespaces
+- [x] Namespaces labeled: app.kubernetes.io/part-of=petclinic, environment={dev,prod}
+- [x] PSA: `enforce: baseline`; `warn` and `audit`: `restricted` on both namespaces
+- [ ] `kubectl apply --dry-run=client` when a kubeconfig exists; do not apply this epic
 
 ---
 
@@ -1382,7 +1383,7 @@ Create namespace definitions for dev and prod.
 **Blocked by:** PETPLAT-38
 
 **Description:**
-Config Server must deploy first. All other services depend on it.
+**ADR-0018:** obsolete as plain YAML. Config Server Deployment, Service, ConfigMap, probes, and ServiceAccount are the Helm chart (E-16). Do not create `k8s/base/config-server/`.
 
 **Technical Spec:** [Application Services](./technical-spec.md#application-services), [Kubernetes Manifests](./technical-spec.md#kubernetes-manifests)
 
@@ -1413,7 +1414,7 @@ Config Server must deploy first. All other services depend on it.
 **Blocked by:** PETPLAT-39
 
 **Description:**
-Discovery Server (Eureka) depends on Config Server. Must be running before domain services start.
+**ADR-0018:** obsolete as plain YAML. Discovery Server workload packaging is the Helm chart (E-16). Do not create `k8s/base/discovery-server/`.
 
 **Technical Spec:** [Application Services](./technical-spec.md#application-services), [Kubernetes Manifests](./technical-spec.md#kubernetes-manifests)
 
@@ -1440,7 +1441,7 @@ Discovery Server (Eureka) depends on Config Server. Must be running before domai
 **Blocked by:** PETPLAT-40, PETPLAT-35
 
 **Description:**
-Create manifests for the three database-backed services. They need MySQL connection config and credentials from Secrets Manager (synced to K8s Secrets via ESO).
+**ADR-0018:** obsolete as plain YAML. Customers, visits, and vets (JDBC `sslMode=REQUIRED`, ESO secret refs, `docker,mysql`) are Helm values (E-16). Do not create per-service directories under `k8s/base/`.
 
 **Technical Spec:** [Application Services](./technical-spec.md#application-services), [Kubernetes Manifests](./technical-spec.md#kubernetes-manifests), [RDS Database](./technical-spec.md#rds-database)
 
@@ -1470,7 +1471,7 @@ Create manifests for the three database-backed services. They need MySQL connect
 **Blocked by:** PETPLAT-40, PETPLAT-36
 
 **Description:**
-GenAI service needs the OpenAI API key from Secrets Manager (synced to K8s Secret via ESO).
+**ADR-0018:** obsolete as plain YAML. GenAI workload packaging, including the `OPENAI_API_KEY` secret ref, is the Helm chart (E-16). Do not create `k8s/base/genai-service/`.
 
 **Technical Spec:** [Application Services](./technical-spec.md#application-services), [Kubernetes Manifests](./technical-spec.md#kubernetes-manifests)
 
@@ -1497,7 +1498,7 @@ GenAI service needs the OpenAI API key from Secrets Manager (synced to K8s Secre
 **Blocked by:** PETPLAT-40
 
 **Description:**
-API Gateway routes traffic to all domain services and serves the frontend. This is the entry point from the ALB ingress.
+**ADR-0018:** obsolete as plain YAML. API Gateway Deployment and Service are the Helm chart (E-16). Ingress already exists. NetworkPolicy allows `:8080` from public subnet CIDRs only.
 
 **Technical Spec:** [Application Services](./technical-spec.md#application-services), [Kubernetes Manifests](./technical-spec.md#kubernetes-manifests)
 
@@ -1524,7 +1525,7 @@ API Gateway routes traffic to all domain services and serves the frontend. This 
 **Blocked by:** PETPLAT-40
 
 **Description:**
-Spring Boot Admin for monitoring all services.
+**ADR-0018:** obsolete as plain YAML. Admin Server workload packaging is the Helm chart (E-16). Do not create `k8s/base/admin-server/`.
 
 **Technical Spec:** [Application Services](./technical-spec.md#application-services), [Kubernetes Manifests](./technical-spec.md#kubernetes-manifests)
 
@@ -1543,7 +1544,7 @@ Spring Boot Admin for monitoring all services.
 # EPIC E-9: Kubernetes Manifests — Overlays
 
 **Priority:** P1
-**Description:** Create environment-specific overlays for dev and prod that patch replica counts, resource limits, HPA, and image tags. Note: With the adoption of Helm (E-16), environment differences will ultimately be expressed as Helm values files. These overlay definitions inform the Helm values structure.
+**Description:** **ADR-0019:** freeze the replica, HPA, and PDB contract in the spec for `helm-values/{dev,prod}.yaml`. E-16 writes the files. No `k8s/overlays/`, no Deployments, no apply. Prod counts do not fit 2× t4g.small. **PETPLAT-48** is deferred until the chart, images, and a cluster exist. ResourceQuota stays PETPLAT-89. Metrics Server stays PETPLAT-72.
 **Blocked by:** E-8
 **Blocks:** E-14, E-16
 
@@ -1561,18 +1562,18 @@ Spring Boot Admin for monitoring all services.
 **Blocked by:** PETPLAT-38 through PETPLAT-44
 
 **Description:**
-Define dev environment settings that patch base manifests for the dev environment. These settings will be captured as Helm values files in E-16. The overlay definitions serve as the requirements for `helm-values/dev.yaml`.
+**ADR-0019:** the dev contract is the spec table, rendered later as `helm-values/dev.yaml` (E-16). Do not add Kustomize patches.
 
-**Technical Spec:** [Kubernetes Overlays](./technical-spec.md#kubernetes-overlays), [Helm Charts](./technical-spec.md#helm-charts)
+**Technical Spec:** [Kubernetes Overlays](./technical-spec.md#kubernetes-overlays), [ADR-0019](./adr/ADR-0019-e9-helm-values-not-overlays.md)
 
 **Acceptance Criteria:**
 
-- [ ] Dev environment settings defined (to be expressed as Helm values)
-- [ ] All services: 1 replica
-- [ ] Resource limits appropriate for dev (can be smaller)
-- [ ] Namespace: petclinic-dev
-- [ ] Image tags use SHA-based tags (consistent with CI/CD); initial deploy uses tag from PETPLAT-85
-- [ ] Settings documented for translation into `helm-values/dev.yaml` (E-16)
+- [x] Dev environment settings defined for Helm values (ADR-0019)
+- [x] All services: 1 replica
+- [x] Container requests and limits stay the Kubernetes Manifests table (128Mi/512Mi)
+- [x] Namespace: petclinic-dev
+- [x] Image tags are commit SHAs, never `latest` (CI sets the tag; E-9 does not invent one)
+- [x] Settings documented for `helm-values/dev.yaml` (E-16 writes the file)
 
 ---
 
@@ -1588,20 +1589,20 @@ Define dev environment settings that patch base manifests for the dev environmen
 **Blocked by:** PETPLAT-38 through PETPLAT-44
 
 **Description:**
-Define prod environment settings with production-appropriate configuration. These settings will be captured as Helm values files in E-16. The overlay definitions serve as the requirements for `helm-values/prod.yaml`.
+**ADR-0019:** the prod contract is the spec table, rendered later as `helm-values/prod.yaml` (E-16). Do not apply these counts on 2× t4g.small.
 
-**Technical Spec:** [Kubernetes Overlays](./technical-spec.md#kubernetes-overlays), [Helm Charts](./technical-spec.md#helm-charts)
+**Technical Spec:** [Kubernetes Overlays](./technical-spec.md#kubernetes-overlays), [ADR-0019](./adr/ADR-0019-e9-helm-values-not-overlays.md)
 
 **Acceptance Criteria:**
 
-- [ ] Prod environment settings defined (to be expressed as Helm values)
-- [ ] Domain services: 2 replicas minimum
-- [ ] Infrastructure services (config, discovery): 2 replicas for HA
-- [ ] API Gateway: 2-3 replicas
-- [ ] Namespace: petclinic-prod
-- [ ] Image tags use SHA-based or release tags
-- [ ] Resource limits increased where appropriate
-- [ ] Settings documented for translation into `helm-values/prod.yaml` (E-16)
+- [x] Prod environment settings defined for Helm values (ADR-0019)
+- [x] Domain services customers, visits, vets: 2 replicas. genai and admin: 1
+- [x] Infrastructure services (config, discovery): 2 replicas
+- [x] API Gateway: 2 replicas
+- [x] Namespace: petclinic-prod
+- [x] Image tags are commit SHAs, never `latest`
+- [x] Container requests and limits stay the Kubernetes Manifests table
+- [x] Settings documented for `helm-values/prod.yaml` (E-16 writes the file)
 
 ---
 
@@ -1617,17 +1618,17 @@ Define prod environment settings with production-appropriate configuration. Thes
 **Blocked by:** PETPLAT-46, PETPLAT-72
 
 **Description:**
-Add HPA resources in prod overlay for stateless services.
+**ADR-0019:** prod HPA numbers are the spec table. E-16 renders them in `helm-values/prod.yaml`. Metrics Server is PETPLAT-72. No install and no apply in E-9.
 
-**Technical Spec:** [Kubernetes Overlays](./technical-spec.md#kubernetes-overlays)
+**Technical Spec:** [Kubernetes Overlays](./technical-spec.md#kubernetes-overlays), [ADR-0019](./adr/ADR-0019-e9-helm-values-not-overlays.md)
 
 **Acceptance Criteria:**
 
-- [ ] HPA for api-gateway: min=2, max=6, target CPU=70%
-- [ ] HPA for customers, visits, vets: min=2, max=4, target CPU=70%
-- [ ] HPA for genai-service: min=1, max=3, target CPU=70%
-- [ ] Metrics server installed on EKS (required for HPA)
-- [ ] `kubectl apply --dry-run=client` passes
+- [x] HPA for api-gateway: min=2, max=6, target CPU=70%
+- [x] HPA for customers, visits, vets: min=2, max=4, target CPU=70%
+- [x] HPA for genai-service: min=1, max=3, target CPU=70%
+- [x] No HPA for config-server, discovery-server, or admin-server
+- [ ] Metrics Server install remains PETPLAT-72 (not this story)
 
 ---
 
@@ -1640,10 +1641,10 @@ Add HPA resources in prod overlay for stateless services.
 **Epic:** E-9 K8s Overlays
 **Story Points:** 5
 **Labels:** k8s, deployment, verification
-**Blocked by:** PETPLAT-45, PETPLAT-16, PETPLAT-24, PETPLAT-26, PETPLAT-35, PETPLAT-36, PETPLAT-85
+**Blocked by:** PETPLAT-109, PETPLAT-85, PETPLAT-16, PETPLAT-24, PETPLAT-35, PETPLAT-36
 
 **Description:**
-Deploy all 8 services to dev namespace and verify the full application is working. Images must already exist in ECR (PETPLAT-85). Initial deployment can use `helm install` directly or ArgoCD sync (E-17). Subsequent deployments are handled by ArgoCD.
+**ADR-0019:** deferred out of the E-9 contract. Verification needs the E-16 chart (`PETPLAT-109`), ECR images (`PETPLAT-85`), and an applied cluster. Re-run as a smoke after E-17 ArgoCD, or `helm install` once those exist. Do not treat this as done in E-9.
 
 **Technical Spec:** [Application Services](./technical-spec.md#application-services), [Kubernetes Overlays](./technical-spec.md#kubernetes-overlays), [Helm Charts](./technical-spec.md#helm-charts)
 
@@ -1665,7 +1666,7 @@ Deploy all 8 services to dev namespace and verify the full application is workin
 # EPIC E-10: CI Pipeline (CI-only, ArgoCD handles CD)
 
 **Priority:** P0
-**Description:** Create GitHub Actions workflows for building Docker images, pushing to ECR, and updating image tags in the Git repo. ArgoCD (E-17) handles the CD side by detecting tag changes and deploying to EKS. Uses OIDC federation for AWS auth. No `kubectl apply` in CI -- GitOps pattern only.
+**Description:** **ADR-0020:** CI only. Author the GitHub OIDC provider and `petclinic-github-actions-role` in `environments/dev/network` (keep, next to ECR). Do not apply. Author `update-image-tags.yml` in this repo and a reference `build-push.yml` to copy into an application fork. The Spring repo stays read-only. No `kubectl`. ArgoCD verify waits on E-16 and E-17. PETPLAT-53 and PETPLAT-54 are deferred.
 **Blocked by:** E-3, E-4, E-8
 **Blocks:** None
 
@@ -1683,25 +1684,26 @@ Deploy all 8 services to dev namespace and verify the full application is workin
 **Blocked by:** PETPLAT-52, PETPLAT-16
 
 **Description:**
-Create the GitHub Actions workflow that builds Docker images for changed services and pushes to ECR. Lives in the application repo fork — the workflow triggers on push to main in the app repo context. Uses OIDC federation (PETPLAT-52) for AWS authentication. Only builds images for services whose directories changed — not all 8 on every push.
+**ADR-0020:** write a reference `build-push.yml` in this repo (`.github/workflow-templates/`). The live workflow is copied into an application fork later. Do not edit the read-only Spring repo. Build only changed services, `linux/arm64`, Trivy fail on CRITICAL, tag `${GITHUB_SHA::7}`, then `repository_dispatch` type `app-image-built`. Pin third-party actions to a commit SHA. Never commit an account ID.
 
-**Technical Spec:** [CI/CD Pipeline](./technical-spec.md#cicd-pipeline), [Docker Build](./technical-spec.md#docker-build), [ECR Container Registry](./technical-spec.md#ecr-container-registry)
+**Technical Spec:** [CI/CD Pipeline](./technical-spec.md#cicd-pipeline), [Docker Build](./technical-spec.md#docker-build), [ECR Container Registry](./technical-spec.md#ecr-container-registry), [ADR-0020](./adr/ADR-0020-e10-ci-oidc-platform-workflows.md)
 
 **Acceptance Criteria:**
 
-- [ ] `.github/workflows/build-push.yml` in the application repo fork (not the platform repo)
-- [ ] Trigger: `on: push: branches: [main]`
-- [ ] `dorny/paths-filter` detects which of the 8 service directories changed — one boolean per service
-- [ ] Matrix strategy — only services where the paths-filter output is `true` are included in the build matrix
-- [ ] Set up Docker Buildx + QEMU for ARM64 cross-compilation on x86 runners
-- [ ] Authenticate to AWS via OIDC — `aws-actions/configure-aws-credentials` with `role-to-assume` (no hardcoded access keys)
-- [ ] Login to ECR using `aws-actions/amazon-ecr-login`
-- [ ] Build image for each changed service — `--platform linux/arm64`
-- [ ] Trivy scan each image before push — fail on CRITICAL vulnerabilities
-- [ ] Tag with 7-character commit SHA — `github.sha[:7]`
-- [ ] Push to ECR: `{account}.dkr.ecr.eu-central-1.amazonaws.com/petclinic-dev/{service}:{sha}`
-- [ ] After all changed services are pushed, fire `repository_dispatch` event type `app-image-built` to the platform repo using `PLATFORM_REPO_TOKEN` secret — payload includes SHA and list of changed services only
-- [ ] Pipeline succeeds end-to-end
+- [x] Reference `.github/workflow-templates/build-push.yml` in this repo, with copy notes for the application fork
+- [x] Trigger: `on: push: branches: [main]`
+- [x] `dorny/paths-filter` detects which of the 8 service directories changed — one boolean per service
+- [x] Matrix strategy — only services where the paths-filter output is `true` are included in the build matrix
+- [x] Set up Docker Buildx + QEMU for ARM64 cross-compilation on x86 runners
+- [x] Authenticate to AWS via OIDC — `aws-actions/configure-aws-credentials` with `role-to-assume` (no hardcoded access keys)
+- [x] Login to ECR using `aws-actions/amazon-ecr-login`
+- [x] Build image for each changed service — `--platform linux/arm64`
+- [x] Trivy scan each image before push — fail on CRITICAL vulnerabilities
+- [x] Tag with 7-character commit SHA — `github.sha[:7]`
+- [x] Push to ECR: `{account}.dkr.ecr.eu-central-1.amazonaws.com/petclinic-dev/{service}:{sha}` (account from a GitHub secret, not from git)
+- [x] After all changed services are pushed, fire `repository_dispatch` event type `app-image-built` to the platform repo using `PLATFORM_REPO_TOKEN` secret — payload includes SHA and list of changed services only
+- [x] Third-party actions pinned to a commit SHA
+- [ ] Live fork run is later, after the operator copies the file and sets secrets
 
 ---
 
@@ -1717,20 +1719,20 @@ Create the GitHub Actions workflow that builds Docker images for changed service
 **Blocked by:** PETPLAT-49
 
 **Description:**
-Create GitHub Actions workflow in the platform repo that updates image tags in Helm values files when the build workflow signals completion. Triggered by a `repository_dispatch` event from the app repo — not by a direct workflow dependency. Updates only the services included in the dispatch payload, then commits and pushes so ArgoCD detects the change and deploys.
+**ADR-0020:** author `.github/workflows/update-image-tags.yml` in this repo now. It does not assume an AWS role. A real run fails until E-16 creates `helm-values/{service}.yaml`. ArgoCD UI verification waits on E-16, E-17, and a cluster.
 
-**Technical Spec:** [CI/CD Pipeline](./technical-spec.md#cicd-pipeline), [GitOps with ArgoCD](./technical-spec.md#gitops-with-argocd)
+**Technical Spec:** [CI/CD Pipeline](./technical-spec.md#cicd-pipeline), [GitOps with ArgoCD](./technical-spec.md#gitops-with-argocd), [ADR-0020](./adr/ADR-0020-e10-ci-oidc-platform-workflows.md)
 
 **Acceptance Criteria:**
 
-- [ ] `.github/workflows/update-image-tags.yml` in the platform repo
-- [ ] Trigger: `on: repository_dispatch: types: [app-image-built]`
-- [ ] Receives payload from app repo: SHA and list of changed services
-- [ ] Uses `yq` to update `image.tag` in `helm-values/{service}.yaml` — only for services in the payload
-- [ ] Commits and pushes updated values files to the platform repo
-- [ ] Git commit message format: `ci: update image tags to {sha} ({service-list})`
-- [ ] ArgoCD detects the commit and triggers deployment (verified via ArgoCD UI)
-- [ ] No `kubectl apply` or `aws eks update-kubeconfig` in this workflow
+- [x] `.github/workflows/update-image-tags.yml` in the platform repo
+- [x] Trigger: `on: repository_dispatch: types: [app-image-built]`
+- [x] Receives payload from app repo: SHA and list of changed services
+- [x] Uses `yq` to update `image.tag` in `helm-values/{service}.yaml` — only for services in the payload
+- [x] Commits and pushes updated values files to the platform repo
+- [x] Git commit message format: `ci: update image tags to {sha} ({service-list})`
+- [x] No `kubectl apply` or `aws eks update-kubeconfig` in this workflow
+- [ ] ArgoCD sync check waits on E-16, E-17, and a cluster (not this epic)
 
 ---
 
@@ -1754,16 +1756,18 @@ Create GitHub Actions workflow in the platform repo that updates image tags in H
 **Blocked by:** E-1
 
 **Description:**
-Configure OIDC federation between GitHub Actions and AWS, plus GitHub Secrets for CI. Prod deployment approval is handled by ArgoCD manual sync (not GitHub Environments).
+**ADR-0020:** author the GitHub OIDC provider and `petclinic-github-actions-role` in **dev/network**. Trust `repo:{org}/{app-fork}:ref:refs/heads/main` from gitignored tfvars. ECR push on `petclinic-dev/*` only. `GetAuthorizationToken` may use `Resource: "*"`. Skip apply. Document the GitHub secrets. Never commit an account ID.
 
-**Technical Spec:** [CI/CD Pipeline](./technical-spec.md#cicd-pipeline)
+**Technical Spec:** [CI/CD Pipeline](./technical-spec.md#cicd-pipeline), [ADR-0020](./adr/ADR-0020-e10-ci-oidc-platform-workflows.md)
 
 **Acceptance Criteria:**
 
-- [ ] OIDC IAM role for GitHub Actions (federated identity — no long-lived keys)
-- [ ] GitHub Secrets: AWS region, AWS account ID (for ECR registry URL)
-- [ ] IAM role permissions include `ecr:GetAuthorizationToken`, `ecr:BatchCheckLayerAvailability`, `ecr:PutImage`, etc.
-- [ ] Documentation: how to configure OIDC federation
+- [x] OIDC IAM role `petclinic-github-actions-role` in `terraform/environments/dev/network` (federated identity — no long-lived keys)
+- [x] Trust subject is one fork on `main` (no wildcard repo or ref)
+- [x] GitHub Secrets documented: `AWS_REGION`, `AWS_ROLE_ARN`, `AWS_ACCOUNT_ID` (secret only, not git)
+- [x] IAM role permissions: ECR push and layer read (`BatchGetImage`, `GetDownloadUrlForLayer`) on `petclinic-dev/{service}` ARNs; `ecr:GetAuthorizationToken` on `*`
+- [x] No Terraform state, EKS, or Secrets Manager permissions
+- [x] Skip apply this epic
 
 ---
 
@@ -1779,7 +1783,7 @@ Configure OIDC federation between GitHub Actions and AWS, plus GitHub Secrets fo
 **Blocked by:** PETPLAT-49, PETPLAT-50
 
 **Description:**
-Extract common workflow steps into reusable workflows or composite actions. Since CD is handled by ArgoCD, reusable templates focus on CI steps (build, push, tag update).
+**ADR-0020:** deferred. The build workflow and the tag workflow live in different repositories, so a shared reusable workflow does not pay for itself yet.
 
 **Technical Spec:** [CI/CD Pipeline](./technical-spec.md#cicd-pipeline)
 
@@ -1804,7 +1808,7 @@ Extract common workflow steps into reusable workflows or composite actions. Sinc
 **Blocked by:** PETPLAT-50
 
 **Description:**
-Document and implement rollback procedures for failed deployments. With ArgoCD handling CD, rollback is done by reverting the image tag in Git (GitOps rollback) or using ArgoCD's rollback feature.
+**ADR-0020:** deferred. GitOps rollback needs ArgoCD and a deployed revision (E-15 or after E-17). Do not block E-10 on a live bad-image test.
 
 **Technical Spec:** [GitOps with ArgoCD](./technical-spec.md#gitops-with-argocd), [CI/CD Pipeline](./technical-spec.md#cicd-pipeline)
 
@@ -2062,12 +2066,13 @@ Run Checkov on all Terraform modules and fix critical/high findings.
 **Blocked by:** PETPLAT-38, PETPLAT-43
 
 **Description:**
-Create network policies to restrict pod-to-pod communication.
+**ADR-0018:** write the NetworkPolicy YAML in E-8 at `k8s/base/network-policies/` (default deny, config 8888, discovery 8761, api-gateway 8080 from public subnet CIDRs `10.0.1.0/24` and `10.0.2.0/24`, domain 8081–8084 from api-gateway pods, admin 9090 in-namespace, egress to config, discovery, RDS, DNS 53, HTTPS 443). Git only during E-8. This story verifies them after the cluster exists and VPC CNI NetworkPolicy is enabled (PETPLAT-84). Policies do nothing until then.
 
-**Technical Spec:** [Security Controls](./technical-spec.md#security-controls)
+**Technical Spec:** [Security Controls](./technical-spec.md#security-controls), [ADR-0018](./adr/ADR-0018-e8-namespaces-network-policies.md)
 
 **Acceptance Criteria:**
 
+- [x] Manifests under `k8s/base/network-policies/` (written in E-8; do not apply until the cluster and PETPLAT-84)
 - [ ] Default deny-all ingress policy in petclinic namespaces
 - [ ] Config Server: allow ingress from all petclinic pods on 8888
 - [ ] Discovery Server: allow ingress from all petclinic pods on 8761
@@ -2659,19 +2664,18 @@ Define and implement the mechanism for how the CI pipeline updates Helm values f
 **Blocked by:** PETPLAT-46
 
 **Description:**
-Add PodDisruptionBudgets (PDBs) for prod to ensure minimum availability during node drains, rolling updates, and cluster upgrades.
+**ADR-0019:** prod PDB numbers are the spec table (`minAvailable: 1` for config, discovery, api-gateway, customers, visits, vets). No PDB for genai or admin. E-16 renders them. Node-drain proof waits on a cluster.
 
-**Technical Spec:** [Kubernetes Overlays](./technical-spec.md#kubernetes-overlays)
+**Technical Spec:** [Kubernetes Overlays](./technical-spec.md#kubernetes-overlays), [ADR-0019](./adr/ADR-0019-e9-helm-values-not-overlays.md)
 
 **Acceptance Criteria:**
 
-- [ ] PDB for each service in prod overlay
-- [ ] Config Server: minAvailable=1
-- [ ] Discovery Server: minAvailable=1
-- [ ] API Gateway: minAvailable=1
-- [ ] Domain services (customers, visits, vets): minAvailable=1
-- [ ] `kubectl apply --dry-run=client` passes
-- [ ] Tested: node drain respects PDB (doesn't evict last pod)
+- [x] PDB contract recorded for prod (not every service)
+- [x] Config Server: minAvailable=1
+- [x] Discovery Server: minAvailable=1
+- [x] API Gateway: minAvailable=1
+- [x] Domain services (customers, visits, vets): minAvailable=1
+- [ ] Node-drain check waits on a cluster and the E-16 chart
 
 ---
 
@@ -2687,15 +2691,13 @@ Add PodDisruptionBudgets (PDBs) for prod to ensure minimum availability during n
 **Blocked by:** PETPLAT-38
 
 **Description:**
-Add ResourceQuotas and LimitRanges to petclinic namespaces to prevent runaway resource consumption and enforce resource requests on all pods.
+Add ResourceQuotas and LimitRanges to petclinic namespaces. **ADR-0019:** this stays E-13. Write objects under `k8s/base/`, not Helm values. Use the spec table (max CPU 4, memory 4Gi, pods 30 for both namespaces). Ignore the larger example numbers below.
 
 **Technical Spec:** [Kubernetes Overlays](./technical-spec.md#kubernetes-overlays)
 
 **Acceptance Criteria:**
 
-- [ ] ResourceQuota per namespace: max CPU, max memory, max pods
-- [ ] Dev namespace: lower limits (e.g., 8 CPU, 16Gi memory, 30 pods)
-- [ ] Prod namespace: higher limits (e.g., 32 CPU, 64Gi memory, 80 pods)
+- [ ] ResourceQuota per namespace: max CPU 4, memory 4Gi, max pods 30 (spec table, both dev and prod)
 - [ ] LimitRange: default requests and limits for containers that don't specify them
 - [ ] Verified: pod without resource requests gets default applied
 - [ ] `kubectl apply --dry-run=client` passes
@@ -2929,7 +2931,7 @@ Create a consolidated compliance checklist documenting all security controls, en
 **Blocked by:** PETPLAT-38
 
 **Description:**
-Enable Pod Security Admission (PSA) at the namespace level and set SecurityContext on all deployments to enforce pod security best practices.
+Namespace PSA labels are written on `k8s/base/namespaces.yaml` in E-8 (ADR-0018): enforce `baseline`, warn and audit `restricted`. This story owns SecurityContext on Helm Deployments (E-16): `runAsNonRoot`, drop capabilities, restricted filesystem. Do not add a second namespace file.
 
 **Technical Spec:** [Kubernetes Manifests](./technical-spec.md#kubernetes-manifests), [Security Controls](./technical-spec.md#security-controls)
 
@@ -3065,8 +3067,8 @@ Add a vulnerability scanning step to the CI build pipeline that fails the build 
 # EPIC E-16: Helm Charts
 
 **Priority:** P0
-**Description:** Create a generic Helm chart for Petclinic microservices and per-service/per-environment values files. All 8 services share the same chart template with service-specific configuration in values files. This replaces raw K8s YAML + Kustomize overlays with a more maintainable Helm-based approach.
-**Blocked by:** E-8 (base manifests define what gets templated), E-9 (overlay definitions inform values structure)
+**Description:** Create a generic Helm chart for Petclinic microservices and per-service/per-environment values files. All 8 services share the same chart. **ADR-0018:** this epic owns the Deployments, Services, ConfigMaps, probes, JDBC, and init containers. **ADR-0019:** `helm-values/{dev,prod}.yaml` encode the frozen replica, HPA, and PDB contract. Do not apply prod counts on 2× t4g.small.
+**Blocked by:** E-8 (namespaces), E-9 (values requirements)
 **Blocks:** E-17 (ArgoCD deploys Helm charts)
 
 ---
@@ -3141,14 +3143,14 @@ Create per-service values files at `helm-values/{service}.yaml` for all 8 Petcli
 **Blocked by:** PETPLAT-107, PETPLAT-45, PETPLAT-46
 
 **Description:**
-Create environment-specific values files at `helm-values/dev.yaml` and `helm-values/prod.yaml`. These override the per-service defaults with environment-appropriate settings (replicas, resources, namespaces, HPA settings).
+Create `helm-values/dev.yaml` and `helm-values/prod.yaml` from the ADR-0019 contract. Dev: 1 replica, HPA off, PDB off, namespace `petclinic-dev`. Prod: the spec replica, HPA, and PDB tables, namespace `petclinic-prod`. Container resources stay the manifests table. Do not apply prod counts on 2× t4g.small.
 
 **Technical Spec:** [Helm Charts](./technical-spec.md#helm-charts), [Kubernetes Overlays](./technical-spec.md#kubernetes-overlays)
 
 **Acceptance Criteria:**
 
-- [ ] `helm-values/dev.yaml` — 1 replica per service, smaller resource limits, namespace petclinic-dev, HPA disabled
-- [ ] `helm-values/prod.yaml` — 2+ replicas for domain services, larger resources, namespace petclinic-prod, HPA enabled
+- [ ] `helm-values/dev.yaml` — 1 replica per service, namespace petclinic-dev, HPA off, PDB off
+- [ ] `helm-values/prod.yaml` — replicas per ADR-0019 (genai and admin stay 1), namespace petclinic-prod, HPA and PDB per the spec tables
 - [ ] Prod values include PDB settings (minAvailable=1)
 - [ ] Prod values include HPA settings (min/max replicas, target CPU)
 - [ ] Values are merged with per-service values when deploying: `helm install -f helm-values/{service}.yaml -f helm-values/{env}.yaml`

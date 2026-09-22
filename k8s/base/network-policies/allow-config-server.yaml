@@ -1,0 +1,40 @@
+# Config Server :8888 from pods in the same namespace (ADR-0018).
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-config-server
+  namespace: petclinic-dev
+  labels:
+    app.kubernetes.io/part-of: petclinic
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: config-server
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - podSelector: {}
+      ports:
+        - protocol: TCP
+          port: 8888
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-config-server
+  namespace: petclinic-prod
+  labels:
+    app.kubernetes.io/part-of: petclinic
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: config-server
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - podSelector: {}
+      ports:
+        - protocol: TCP
+          port: 8888

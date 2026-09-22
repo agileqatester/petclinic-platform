@@ -27,9 +27,9 @@
 | 8 | [Secrets Management](#secrets-management) | Implemented |
 | 9 | [DNS and Ingress](#dns-and-ingress) | Partial |
 | 10 | [Application Services](#application-services) | Not started |
-| 11 | [Kubernetes Manifests](#kubernetes-manifests) | Not started |
-| 12 | [Kubernetes Overlays](#kubernetes-overlays) | Not started |
-| 13 | [CI/CD Pipeline](#cicd-pipeline) | Not started |
+| 11 | [Kubernetes Manifests](#kubernetes-manifests) | Partial |
+| 12 | [Kubernetes Overlays](#kubernetes-overlays) | Partial |
+| 13 | [CI/CD Pipeline](#cicd-pipeline) | Partial |
 | 14 | [Observability](#observability) | Not started |
 | 15 | [IRSA Roles](#irsa-roles) | Not started |
 | 16 | [Security Controls](#security-controls) | Partial |
@@ -688,14 +688,14 @@ The API Gateway also serves an **AngularJS frontend** (static files: AngularJS 1
 
 ## Kubernetes Manifests
 
-**Implementation:** Not started — no `k8s/` tree.
+**Implementation:** Partial — Ingress, ExternalSecret, `k8s/base/namespaces.yaml`, and `k8s/base/network-policies/` are in git (ADR-0018). Not applied. Per-service Deployments, Services, ConfigMaps, probes, JDBC, and init containers are the Helm chart (E-16). VPC CNI NetworkPolicy stays PETPLAT-84.
 
 ### Namespaces
 
 | Namespace | Environment | PSA Labels |
 |-----------|-------------|------------|
-| `petclinic-dev` | Dev | `pod-security.kubernetes.io/enforce: baseline`, `pod-security.kubernetes.io/warn: restricted` |
-| `petclinic-prod` | Prod | `pod-security.kubernetes.io/enforce: baseline`, `pod-security.kubernetes.io/warn: restricted` |
+| `petclinic-dev` | Dev | `pod-security.kubernetes.io/enforce: baseline`; `warn` and `audit`: `restricted` |
+| `petclinic-prod` | Prod | `pod-security.kubernetes.io/enforce: baseline`; `warn` and `audit`: `restricted` |
 
 ### Standard Labels (All Resources)
 
@@ -807,9 +807,9 @@ Each service directory contains:
 
 ## Kubernetes Overlays
 
-**Implementation:** Not started — no overlay/Helm env values yet.
+**Implementation:** Contract frozen (ADR-0019). The tables below are the requirements for `helm-values/{dev,prod}.yaml`, written in E-16. No `k8s/overlays/`. Not applied. Prod replica and HPA max counts do not fit 2× t4g.small; do not apply them on the learning cluster.
 
-### Dev Overlay (`k8s/overlays/dev/`)
+### Dev env values (`helm-values/dev.yaml`)
 
 | Parameter | Value |
 |-----------|-------|
@@ -817,7 +817,7 @@ Each service directory contains:
 | Replicas (all services) | 1 |
 | Image Tag | Commit SHA (CI updates `helm-values/{service}.yaml`, ArgoCD deploys) |
 
-### Prod Overlay (`k8s/overlays/prod/`)
+### Prod env values (`helm-values/prod.yaml`)
 
 | Service | Replicas | Notes |
 |---------|----------|-------|
@@ -840,7 +840,7 @@ Each service directory contains:
 | vets-service | 2 | 4 | 70% |
 | genai-service | 1 | 3 | 70% |
 
-HPA requires Metrics Server to be installed (PETPLAT-72).
+HPA requires Metrics Server (PETPLAT-72, E-14). E-9 does not install it. No HPA for config-server, discovery-server, or admin-server.
 
 ### Pod Disruption Budgets (Prod only)
 
@@ -853,7 +853,11 @@ HPA requires Metrics Server to be installed (PETPLAT-72).
 | visits-service | 1 |
 | vets-service | 1 |
 
+No PDB for genai-service or admin-server. E-16 renders these from `helm-values/prod.yaml`. Dev has PDB off.
+
 ### Resource Quotas
+
+Written later as namespace objects in `k8s/base/` (PETPLAT-89, E-13), not as Helm values. Use this table. The larger example numbers on PETPLAT-89 are not the contract.
 
 | Parameter | Dev | Prod |
 |-----------|-----|------|
@@ -865,36 +869,38 @@ HPA requires Metrics Server to be installed (PETPLAT-72).
 
 Environment-specific configuration is managed via Helm values files in `helm-values/`:
 - `helm-values/dev.yaml` — dev overrides (replicas=1, no HPA, no PDB)
-- `helm-values/prod.yaml` — prod overrides (replicas=2, HPA enabled, PDB enabled)
+- `helm-values/prod.yaml` — prod replica, HPA, and PDB tables (ADR-0019). genai and admin stay at 1 replica with no PDB.
 - Per-service files hold service-specific config (ports, env vars, init containers)
 - ArgoCD merges service + environment values when deploying
 
-> **Note:** The `k8s/overlays/` directory remains for namespace manifests and external-secrets CRs that are not Helm-managed. See [Helm Charts](#helm-charts) for the full chart structure.
+Namespaces are `k8s/base/namespaces.yaml`. ExternalSecrets are `k8s/base/external-secrets/`. There is no `k8s/overlays/` tree.
 
 ---
 
 ## CI/CD Pipeline
 
-**Implementation:** Not started — no `.github/workflows/`.
+**Implementation:** Authored (ADR-0020), not applied. OIDC provider and `petclinic-github-actions-role` are in `terraform/environments/dev/network/github_oidc.tf`. `github_repository` must be set in local `terraform.tfvars` before the next network plan. Reference build workflow: `.github/workflow-templates/build-push.yml`. Tag workflow: `.github/workflows/update-image-tags.yml` (inert until E-16). Live build is copied into an application fork. ArgoCD verify waits on E-16 and E-17. PETPLAT-53 and PETPLAT-54 stay deferred.
 
 ### Architecture: CI + GitOps
 
-GitHub Actions handles **CI only** (build, test, push images). **ArgoCD handles CD** (deployment to EKS). The separation is:
+GitHub Actions handles **CI only** (build and push images). **ArgoCD handles CD**. The tag-update workflow does not call AWS. ECR login belongs to the fork build.
 
 | Concern | Tool | How |
 |---------|------|-----|
-| Build & Push images | GitHub Actions | `build-push.yml` — builds ARM64 images, pushes to ECR |
-| Update image tags | GitHub Actions | `update-image-tags.yml` — commits new tag to `helm-values/` |
+| Build & Push images | GitHub Actions in the **app fork** | Reference `build-push.yml` in this repo; copy into the fork. ARM64, Trivy, push to ECR |
+| Update image tags | GitHub Actions in **this repo** | `update-image-tags.yml` on `repository_dispatch` `app-image-built` |
 | Deploy to Kubernetes | ArgoCD | Watches Git, detects tag changes, syncs Helm releases |
 
 ### Workflows
 
-| Workflow | File | Trigger | What it does |
-|----------|------|---------|--------------|
-| Build & Push | `.github/workflows/build-push.yml` | Push to `main` | Build ARM64 images, Trivy scan, push to ECR |
-| Update Image Tags | `.github/workflows/update-image-tags.yml` | After build-push succeeds | Commits new image tag to `helm-values/` → ArgoCD picks up |
+| Workflow | File | Where it runs | What it does |
+|----------|------|--------------|--------------|
+| Build & Push | Reference `.github/workflow-templates/build-push.yml`; live copy in the app fork | Push to `main` on the fork | Build changed services only, ARM64, Trivy, push to ECR, dispatch `app-image-built` |
+| Update Image Tags | `.github/workflows/update-image-tags.yml` | This repo, `repository_dispatch` | Sets `image.tag` in `helm-values/{service}.yaml` and pushes. Inert until E-16 creates those files. |
 
-> **No deploy workflows.** ArgoCD watches the Git repo for changes to `helm-values/` and automatically syncs (dev) or waits for manual approval (prod).
+> **No deploy workflows.** Prod approval is ArgoCD manual sync, not a GitHub Environment. Third-party actions are pinned to a commit SHA.
+
+The OIDC provider and role are Terraform in **dev/network** (keep), not the destroyable workload and not the EKS IRSA issuer. Apply is a later gate. `{org}/{repo}` in the trust policy comes from gitignored tfvars. Never commit an account ID. `ecr:GetAuthorizationToken` is the only action with `Resource: "*"`. Push, layer upload, and layer read (`BatchGetImage`, `GetDownloadUrlForLayer`) are limited to the `petclinic-dev/{service}` repository ARNs.
 
 ### OIDC Federation (No Long-Lived Credentials)
 
@@ -904,7 +910,7 @@ GitHub Actions handles **CI only** (build, test, push images). **ArgoCD handles 
 | Audience | `sts.amazonaws.com` |
 | Subject Filter | `repo:{org}/{repo}:ref:refs/heads/main` |
 | IAM Role | `petclinic-github-actions-role` |
-| Permissions | ECR push only (`ecr:GetAuthorizationToken`, `ecr:BatchCheckLayerAvailability`, `ecr:PutImage`, layer upload actions) — no S3, no DynamoDB (CI workflows do not run Terraform) |
+| Permissions | ECR push on the eight `petclinic-dev` repos (`BatchCheckLayerAvailability`, `BatchGetImage`, `GetDownloadUrlForLayer`, layer upload, `PutImage`) plus `ecr:GetAuthorizationToken` on `*` — no S3, no DynamoDB (CI workflows do not run Terraform) |
 
 ### GitHub Secrets
 
@@ -924,7 +930,7 @@ GitHub Actions handles **CI only** (build, test, push images). **ArgoCD handles 
 6. Maven build: `./mvnw clean install -P buildDocker -Dcontainer.platform="linux/arm64"`
 7. Trivy scan: fail on CRITICAL CVEs
 8. Tag images with commit SHA (short, 7 chars): `${GITHUB_SHA::7}`
-9. Push all 8 images to ECR
+9. Push **changed** images to ECR (path filter; not all 8 on every push)
 
 > **ARM cross-compilation:** GitHub Actions runners are x86_64. Building ARM64 images requires QEMU emulation via `docker/setup-qemu-action` and `docker/setup-buildx-action`. Build time increases from ~2 min to ~5 min per image, which is acceptable for a learning project.
 
@@ -934,7 +940,7 @@ GitHub Actions handles **CI only** (build, test, push images). **ArgoCD handles 
 2. Update image tag in `helm-values/{service}.yaml` — only for services in the `repository_dispatch` payload (not all 8 on every run)
 3. Git commit + push: `"ci: update image tags to ${SHA} (${service-list})"`
 
-ArgoCD detects the Git change and triggers sync automatically (dev) or queues for approval (prod).
+ArgoCD verification of that commit waits until E-16 has created `helm-values/{service}.yaml`, E-17 is installed, and a cluster exists. PETPLAT-53 (reusable workflows) and PETPLAT-54 (live rollback) are deferred.
 
 ### Image Tag Update Mechanism
 
@@ -1097,7 +1103,7 @@ Five IAM Roles for Service Accounts, each with OIDC trust policy scoped to a spe
 
 ## Security Controls
 
-**Implementation:** Partial — state-bucket SSE-S3 + HTTPS-only policy and gitignore/hooks for secrets. RDS/EBS/ECR encryption, NetworkPolicies, and Pod Security Admission are not started.
+**Implementation:** Partial — state-bucket SSE-S3 + HTTPS-only policy and gitignore/hooks for secrets. RDS TLS is required (ADR-0015). Namespace PSA labels and NetworkPolicy YAML are in git (ADR-0018) and not applied. VPC CNI NetworkPolicy stays PETPLAT-84.
 
 ### Encryption Matrix
 
@@ -1117,7 +1123,7 @@ Five IAM Roles for Service Accounts, each with OIDC trust policy scoped to a spe
 | Default deny ingress | `petclinic-{env}` | Deny all ingress by default |
 | Config Server allow | `petclinic-{env}` | Allow ingress to 8888 from all pods in namespace |
 | Discovery Server allow | `petclinic-{env}` | Allow ingress to 8761 from all pods in namespace |
-| API Gateway allow | `petclinic-{env}` | Allow ingress to 8080 from **public subnet CIDRs** (ALB ENIs, `target-type: ip`). Not the VPC CIDR. |
+| API Gateway allow | `petclinic-{env}` | Allow ingress to 8080 from **public subnet CIDRs** (ALB ENIs, `target-type: ip`). Dev: `10.0.1.0/24` and `10.0.2.0/24`. Not the VPC CIDR (`10.0.0.0/16`). |
 | Domain services allow | `petclinic-{env}` | Allow ingress to 8081-8084 from API Gateway pods only |
 | Admin Server allow | `petclinic-{env}` | Allow ingress to 9090 from internal only |
 | Egress allow | `petclinic-{env}` | Allow egress to Config Server, Discovery, RDS, DNS (53), HTTPS (443) |
@@ -1460,7 +1466,7 @@ Provisions the IAM roles, SQS queue, and EventBridge rules needed for Karpenter.
 
 ### Architecture Decision
 
-Helm replaces plain K8s YAML + Kustomize overlays. A **single generic chart** (`helm/petclinic-service/`) is shared by all 8 services. Per-service and per-environment configuration is in `helm-values/`. See [ADR-0007](#adr-index).
+Helm replaces plain K8s YAML + Kustomize overlays. A **single generic chart** (`helm/petclinic-service/`) is shared by all 8 services. Per-service and per-environment configuration is in `helm-values/`. See [ADR-0007](#adr-index). Workload packaging deferred from E-8 (Deployments, probes, JDBC, init containers) lives in this chart ([ADR-0018](./adr/ADR-0018-e8-namespaces-network-policies.md)). Replica, HPA, and PDB numbers are the E-9 contract ([ADR-0019](./adr/ADR-0019-e9-helm-values-not-overlays.md)), rendered here as `helm-values/{dev,prod}.yaml`.
 
 ### Chart Structure
 
@@ -1730,7 +1736,7 @@ spec:
 
 ## ADR Index
 
-**Implementation:** Partial — decisions are recorded in this table. Written files: ADR-0001, ADR-0012, ADR-0013, ADR-0014, ADR-0015, ADR-0016, ADR-0017. Remaining rows are index-only until E-15.
+**Implementation:** Partial — decisions are recorded in this table. Written files: ADR-0001, ADR-0012, ADR-0013, ADR-0014, ADR-0015, ADR-0016, ADR-0017, ADR-0018, ADR-0019, ADR-0020. Remaining rows are index-only until E-15.
 
 Architecture Decision Records are stored in `docs/adr/`.
 
@@ -1753,3 +1759,6 @@ Architecture Decision Records are stored in `docs/adr/`.
 | ADR-0015 | RDS MySQL and credentials in the destroyable workload | Accepted | Dev MySQL 8.4 + `petclinic/{env}/rds-credentials` in `environments/dev/workload`, not network. Existing RDS SG. `random_password` in-module. Skip apply and prod this epic. ADR-0003 / 0006 unchanged. |
 | ADR-0016 | Skip Route 53/ACM without a domain; LBC waits on EKS | Accepted | Domain optional; gated dns module in network. Learning HTTP to ALB DNS. LBC IRSA in workload; Helm/Ingress apply wait on E-3. Skip placeholder zones. |
 | ADR-0017 | Non-RDS secrets and ESO IRSA in the destroyable workload | Accepted | OpenAI SM secret gated in `environments/dev/workload`. ESO IRSA in workload. Skip git creds. YAML now; ESO install waits on E-3. Skip apply and prod. |
+| ADR-0018 | E-8 is namespaces and NetworkPolicies only | Accepted | `k8s/base/namespaces.yaml` + `k8s/base/network-policies/`. API gateway ingress from public subnet CIDRs. PETPLAT-39–44 workloads are Helm (E-16). No Kustomize. No apply. |
+| ADR-0019 | E-9 freezes the env contract for Helm values | Accepted | Replica, HPA, and PDB numbers for `helm-values/{dev,prod}.yaml` (E-16). No `k8s/overlays/`. No apply. PETPLAT-48 deferred. Prod counts do not fit 2× t4g.small. |
+| ADR-0020 | E-10 CI: OIDC in keep network; fork builds; platform updates tags | Accepted | `petclinic-github-actions-role` in `environments/dev/network`. Reference `build-push.yml` copied into an app fork. `update-image-tags.yml` in this repo. No apply. PETPLAT-53 and PETPLAT-54 deferred. |

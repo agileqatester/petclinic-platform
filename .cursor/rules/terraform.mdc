@@ -20,6 +20,8 @@ EKS (cluster, OIDC, managed node group, IAM, Access Entries) is called from **wo
 
 ECR private repositories are called from **network**, never workload (ADR-0014). Dev only this epic.
 
+GitHub OIDC provider and `petclinic-github-actions-role` are **network** (ADR-0020), next to ECR, so image push survives workload destroy. Trust one application fork on `main` (gitignored tfvars). ECR push on `petclinic-dev/*` only. `ecr:GetAuthorizationToken` is the only `Resource: "*"`. Skip apply. Never commit an account ID.
+
 RDS (MySQL 8.4, existing VPC RDS SG, `random_password` + Secrets Manager `petclinic/{env}/rds-credentials`) is called from **workload**, never network (ADR-0015). Dev only this epic. No `depends_on` NAT. Skip apply and prod.
 
 DNS (Route 53 + ACM) is optional and gated in **network** when `domain_name` is non-empty (ADR-0016). LBC IRSA is **workload**. Do not create a placeholder hosted zone.

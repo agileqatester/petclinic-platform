@@ -27,4 +27,4 @@ module "ecr" {
   image_tag_mutability = "MUTABLE"
 }
 
-# Keep stack: VPC + ECR. NAT default route is added by the workload root.
+# Keep stack: VPC + ECR + GitHub OIDC (ADR-0020). NAT default route is added by the workload root.

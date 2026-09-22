@@ -1,0 +1,46 @@
+# API Gateway :8080 from public subnet CIDRs only (ALB ENIs). Not the VPC CIDR (ADR-0018).
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-api-gateway
+  namespace: petclinic-dev
+  labels:
+    app.kubernetes.io/part-of: petclinic
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: api-gateway
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - ipBlock:
+            cidr: 10.0.1.0/24
+        - ipBlock:
+            cidr: 10.0.2.0/24
+      ports:
+        - protocol: TCP
+          port: 8080
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-api-gateway
+  namespace: petclinic-prod
+  labels:
+    app.kubernetes.io/part-of: petclinic
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: api-gateway
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - ipBlock:
+            cidr: 10.1.1.0/24
+        - ipBlock:
+            cidr: 10.1.2.0/24
+      ports:
+        - protocol: TCP
+          port: 8080

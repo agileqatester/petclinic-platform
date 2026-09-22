@@ -1,0 +1,71 @@
+# Update Helm image tags after the app fork dispatches app-image-built (ADR-0020).
+# Does not call AWS. Fails until E-16 creates helm-values/{service}.yaml.
+name: Update image tags
+
+on:
+  repository_dispatch:
+    types: [app-image-built]
+
+permissions:
+  contents: write
+
+concurrency:
+  group: update-image-tags
+  cancel-in-progress: false
+
+jobs:
+  update-tags:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Install yq
+        run: |
+          install_dir="${HOME}/bin"
+          mkdir -p "$install_dir"
+          curl -fsSL -o "${install_dir}/yq" https://github.com/mikefarah/yq/releases/download/v4.53.6/yq_linux_amd64
+          echo "c5f056448f973ae7d39b5401949648a78f2dc1947d6a8eb65be60d5c504b9385  ${install_dir}/yq" | sha256sum -c -
+          chmod 0755 "${install_dir}/yq"
+          echo "$install_dir" >> "$GITHUB_PATH"
+          "${install_dir}/yq" --version
+      - name: Set image tags
+        env:
+          SHA: ${{ github.event.client_payload.sha }}
+          SERVICES: ${{ github.event.client_payload.services }}
+        run: |
+          if ! [[ "$SHA" =~ ^[0-9a-f]{7}$ ]]; then
+            echo "sha must be 7 hex characters" >&2
+            exit 1
+          fi
+          if [[ -z "$SERVICES" ]]; then
+            echo "services payload is empty" >&2
+            exit 1
+          fi
+          allowed="config-server discovery-server api-gateway customers-service visits-service vets-service genai-service admin-server"
+          for service in $SERVICES; do
+            ok=0
+            for name in $allowed; do
+              if [[ "$service" == "$name" ]]; then
+                ok=1
+              fi
+            done
+            if [[ "$ok" -ne 1 ]]; then
+              echo "refusing unknown service: ${service}" >&2
+              exit 1
+            fi
+            file="helm-values/${service}.yaml"
+            if [[ ! -f "$file" ]]; then
+              echo "${file} does not exist yet (E-16)" >&2
+              exit 1
+            fi
+            yq -i ".image.tag = \"${SHA}\"" "$file"
+            git add "$file"
+          done
+          if git diff --cached --quiet; then
+            echo "tags already at ${SHA}"
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -m "ci: update image tags to ${SHA} (${SERVICES})"
+          git push

@@ -1,0 +1,40 @@
+# Discovery Server :8761 from pods in the same namespace (ADR-0018).
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-discovery-server
+  namespace: petclinic-dev
+  labels:
+    app.kubernetes.io/part-of: petclinic
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: discovery-server
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - podSelector: {}
+      ports:
+        - protocol: TCP
+          port: 8761
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-discovery-server
+  namespace: petclinic-prod
+  labels:
+    app.kubernetes.io/part-of: petclinic
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: discovery-server
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - podSelector: {}
+      ports:
+        - protocol: TCP
+          port: 8761
