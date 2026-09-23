@@ -1,0 +1,36 @@
+# Fluent Bit on every node, including the tainted observability node.
+# Forwards container logs to Loki. No AWS IAM. Not installed until the
+# cluster is up and Loki is in namespace monitoring.
+#
+# Chart: fluent/fluent-bit 0.58.2
+#
+# helm repo add fluent https://fluent.github.io/helm-charts
+# helm template fluent-bit fluent/fluent-bit --version 0.58.2 -n monitoring \
+#   -f helm-values/observability/fluent-bit.yaml
+
+kind: DaemonSet
+
+testFramework:
+  enabled: false
+
+resources:
+  requests:
+    memory: 32Mi
+  limits:
+    memory: 64Mi
+
+tolerations:
+  - operator: Exists
+    effect: NoSchedule
+
+config:
+  outputs: |
+    [OUTPUT]
+        Name loki
+        Match kube.*
+        Host loki.monitoring
+        Port 3100
+        Labels job=fluentbit
+        Label_Keys $kubernetes['namespace_name'],$kubernetes['pod_name'],$kubernetes['container_name']
+        Line_Format json
+        Retry_Limit 5

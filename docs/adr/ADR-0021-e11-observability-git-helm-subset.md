@@ -2,9 +2,10 @@
 
 **Status:** Accepted
 **Date:** 2026-09-22
+**Amendment:** 2026-09-23 — short-session Loki, FluentBit, and Zipkin are authored on the same `t4g.large` (memory caps, empty disk). Not a second instance. Not installed. App trace export still waits on E-16.
 **Context:** Epic E-11 (`PETPLAT-55`–`60`; `PETPLAT-61` removed) still reads as “deploy Prometheus, Grafana, Alertmanager, Loki, FluentBit, Zipkin, dashboards, and alert rules on EKS.” Dev workload is not applied (no EKS, NAT, or RDS). Network (VPC, ECR, GitHub OIDC) is applied. PETPLAT-84 (EBS CSI and VPC CNI NetworkPolicy) is not done, so PersistentVolumes for Prometheus, Grafana, and Loki cannot bind. Eight Spring apps and the chart are E-16; ArgoCD is E-17. Scrape targets and meaningful JVM metrics do not exist yet. Learning budget: destroy-after-session. App nodes if ever applied are 2× t4g.small. Live Prometheus uses a separate tainted node group, 1× t4g.large, created only when `enable_observability=true`. Spec and ADR-0001 already reject CloudWatch-as-default logging and alarms. The empty `terraform/modules/observability/` placeholder must not become a CloudWatch module. ADR-0018 forbids eight Deployment trees under `k8s/base`. ADR-0019 forbids overlays. No `kubectl apply` or `helm install` without a live cluster.
 
-**Decision:** Live Prometheus, Grafana, and Alertmanager run only on a second EKS managed node group. The app group stays 2× t4g.small. The observability group is 1× `t4g.large` (8 GiB), label `workload=observability`, taint `dedicated=observability:NO_SCHEDULE`. Helm values (still git-only until a cluster exists) must set a node selector and toleration for that taint. `node-exporter` stays a DaemonSet on every node. `enable_observability` defaults to false, so a normal workload apply does not create the group or the instance. A Prometheus session passes `-var=enable_observability=true`. The next apply without that flag deletes the node. Do not apply in this change. Do not invent AWS logging resources. Loki, FluentBit, and Zipkin stay off this node.
+**Decision:** Live Prometheus, Grafana, and Alertmanager run only on a second EKS managed node group. The app group stays 2× t4g.small. The observability group is 1× `t4g.large` (8 GiB), label `workload=observability`, taint `dedicated=observability:NO_SCHEDULE`. Helm values (still git-only until a cluster exists) must set a node selector and toleration for that taint. `node-exporter` stays a DaemonSet on every node. `enable_observability` defaults to false, so a normal workload apply does not create the group or the instance. A Prometheus session passes `-var=enable_observability=true`. The next apply without that flag deletes the node. Do not apply in this change. Do not invent AWS logging resources. Loki (1Gi, empty disk), FluentBit (DaemonSet on every node), and Zipkin (512Mi, in-memory, namespace `tracing`) share this node for a short session. They use the same node selector and toleration, except FluentBit, which only tolerates the taint so it can run on the app nodes too.
 
 ### What E-11 writes now (git only — no apply)
 
@@ -24,17 +25,17 @@ Leave `terraform/modules/observability/` as the empty placeholder (PETPLAT-1 / r
 |---------|----------|--------|
 | `helm install` / live UI / “metrics visible” ACs | E-3 apply (PETPLAT-16), PETPLAT-84 (EBS CSI), then a deliberate install session | No pretend deploy |
 | Meaningful scrape / dashboard verification | E-16 (apps expose `/actuator/prometheus`) | Rules and scrape jobs can sit in git earlier |
-| Loki + FluentBit (`PETPLAT-59`) | Same cluster + CSI; prefer after metrics subset proves useful | Extra RAM + 10Gi PV; FluentBit DaemonSet on every node |
-| Zipkin (`PETPLAT-60`) | E-16 (apps export OTLP/Zipkin via config) + capacity | Remains P2; see below |
+| Loki + FluentBit live logs (`PETPLAT-59`) | Cluster + `enable_observability=true` | Values are in git. Empty disk for the session. 10Gi/50Gi PVs wait on PETPLAT-84. LogQL alert rules are not in this slice. |
+| Zipkin live traces (`PETPLAT-60`) | E-16 for app exporter config | Zipkin itself is `helm/zipkin` on the observability node. The UI can open before apps send traces. |
 | Prod HA sizes (50Gi PVs, 15d/30d retention) | Larger pool / non-learning run | Prod values in git are inventory only |
 
 **Optional session mode (not a second architecture):** if someone applies EKS for a short lab before CSI, use emptyDir (or disable persistence in values) so Prometheus, Grafana, and Alertmanager can start without EBS CSI. Data dies with the destroyable stack — acceptable for learning. Default git contract still documents EBS sizes for when CSI exists.
 
 ### Stack size
 
-Author and (later) run Prometheus + Grafana + Alertmanager on the observability node group. Defer Loki, FluentBit, and Zipkin.
+Author and (later) run Prometheus, Grafana, Alertmanager, Loki, and Zipkin on the observability node group. FluentBit runs on every node. A 1–5 hour session fits on the `t4g.large` with the caps above. `t4g.xlarge` remains the step up only for multi-day retention and the spec disks together.
 
-**Why `t4g.large`, not `t4g.medium`:** eu-central-1 on-demand Linux is $0.0384/h for `t4g.medium` (4 GiB) and $0.0768/h for `t4g.large` (8 GiB). After the kubelet reservation, a medium leaves about 3 GiB allocatable, and DaemonSets on that node take several hundred MiB more. The chart (Prometheus, Grafana, Alertmanager, operator, kube-state-metrics) then has about 2.5 GiB. Prometheus alone often sits at 1–2 GiB once cadvisor is scraped, so a medium is the size that gets OOMKilled. A large leaves about 6 GiB allocatable, enough to cap Prometheus at 2Gi and still run the rest of the chart. `t4g.xlarge` (16 GiB, $0.1536/h) is the step up only if Loki joins this node later.
+**Why `t4g.large`, not `t4g.medium`:** eu-central-1 on-demand Linux is $0.0384/h for `t4g.medium` (4 GiB) and $0.0768/h for `t4g.large` (8 GiB). After the kubelet reservation, a medium leaves about 3 GiB allocatable, and DaemonSets on that node take several hundred MiB more. The chart (Prometheus, Grafana, Alertmanager, operator, kube-state-metrics) then has about 2.5 GiB. Prometheus alone often sits at 1–2 GiB once cadvisor is scraped, so a medium is the size that gets OOMKilled. A large leaves about 6 GiB allocatable, enough to cap Prometheus at 2Gi and still run the rest of the chart. `t4g.xlarge` (16 GiB, $0.1536/h) is the step up for multi-day retention plus the spec disks. A 1–5 hour session keeps Loki at 1Gi and Zipkin at 512Mi on this large node.
 
 The group is in the EKS module (`aws_eks_node_group.observability`), with its own launch template (same IMDSv2 hop 1 and encrypted gp3, EC2 Name `petclinic-{env}-eks-observability`) and the app node role. Instance type is on the node group. It exists only while `enable_observability` is true (count 0 otherwise), at min/max/desired 1. Apply again without the flag when the session ends so the $0.0768/h instance is destroyed.
 
@@ -44,7 +45,7 @@ Admin credentials are a Kubernetes Secret in `monitoring`, created at install ti
 
 ### Zipkin / PETPLAT-60
 
-Keep `PETPLAT-60` in the E-11 backlog as P2, but out of the E-11 git delivery and default install. Namespace `tracing`, port 9411, and app exporter config remain the course contract for a later session after E-16. Do not block E-11 acceptance on traces.
+Zipkin is `helm/zipkin`, namespace `tracing`, port 9411, on the observability node. In-memory only. Apps send traces only after E-16 sets the exporter URL. The Zipkin UI can open before that.
 
 ### Stories after accept
 
@@ -52,15 +53,15 @@ Keep `PETPLAT-60` in the E-11 backlog as P2, but out of the E-11 git delivery an
 |-------|----------------|
 | PETPLAT-55 / 56 / 58 | Git values + alert rules for Prometheus, Grafana, and Alertmanager. Cluster ACs leave this epic until apply + CSI (+ E-16 for “metrics from all services”). |
 | PETPLAT-57 | Dashboard JSON under `helm-values/observability/dashboards/` (not a second Deployment tree under `k8s/base/`). |
-| PETPLAT-59 | Deferred packaging and install; still in-cluster Loki ← FluentBit, no IRSA. |
-| PETPLAT-60 | Stays P2; deferred install; not required for E-11 close. |
+| PETPLAT-59 | Values in git: Loki single-binary 1Gi, emptyDir 2Gi, FluentBit DaemonSet. Live logs and spec PVs wait on a cluster and PETPLAT-84. LogQL rules are not in this slice. |
+| PETPLAT-60 | `helm/zipkin` in git, in-memory, 512Mi, on the observability node. Live traces wait on E-16 exporter config. |
 | PETPLAT-61 | Remains removed. Placeholder module stays empty. |
 
-**Spec delta on accept:** Observability “Implementation” → git Helm values under `helm-values/observability/`; subset vs deferred components; no apply without cluster + PETPLAT-84; Grafana Secret at install; dashboard path away from per-service Deployment trees; note capacity vs 2× t4g.small; Zipkin remains P2 deferred.
+**Spec delta on accept:** Observability “Implementation” → git Helm values under `helm-values/observability/` plus `helm/zipkin`; short-session Loki/FluentBit/Zipkin share the gated node; no apply without a cluster; Grafana Secret at install; dashboard path away from per-service Deployment trees; spec disks still wait on PETPLAT-84.
 
 **Consequences:**
 - Positive: Matches destroy-after-session and ADR-0001 (no CloudWatch default). One packaging path (upstream Helm + values). ~$0 while nothing is applied. Avoids false “deployed” acceptance criteria.
-- Negative: Full-spec Loki, FluentBit, Zipkin, and live verification move later. PETPLAT-55–58 wording that assumes a running cluster is obsolete until post-apply. Dashboard path differs from the backlog’s `k8s/base/observability/grafana-dashboards/`.
+- Negative: Live logs, traces, and the spec EBS sizes wait on a cluster, PETPLAT-84, and E-16. LogQL alert rules are not authored. PETPLAT-55–58 wording that assumes a running cluster is obsolete until post-apply. Dashboard path differs from the backlog’s `k8s/base/observability/grafana-dashboards/`.
 - Cost (eu-central-1, order of magnitude): Git is ~$0. With the cluster up, the EKS control plane is ~$0.10/h and cannot be stopped. EBS gp3 for 10+5+10 Gi is about $2–3/month if left; destroy-after-session brings storage near $0. Observability pods themselves are mostly node RAM, not a separate AWS line item. Leaving the full stack and the apps 24/7 on undersized nodes fails scheduling and still burns EKS hours.
 - Security: No secrets in git. No public scrape ingress required (port-forward). No FluentBit → CloudWatch IAM. In-cluster Alertmanager email or Slack stays operator config at install, not committed credentials.
 

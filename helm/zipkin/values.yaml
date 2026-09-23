@@ -1,0 +1,17 @@
+namespace: tracing
+image:
+  repository: openzipkin/zipkin
+  tag: "3.5.1"
+replicas: 1
+resources:
+  requests:
+    memory: 256Mi
+  limits:
+    memory: 512Mi
+nodeSelector:
+  workload: observability
+tolerations:
+  - key: dedicated
+    operator: Equal
+    value: observability
+    effect: NoSchedule

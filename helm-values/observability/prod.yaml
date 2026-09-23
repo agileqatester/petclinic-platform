@@ -82,6 +82,13 @@ grafana:
     enabled: true
     size: 5Gi
 
+  additionalDataSources:
+    - name: Loki
+      type: loki
+      access: proxy
+      url: http://loki.monitoring.svc.cluster.local:3100
+      isDefault: false
+
   sidecar:
     dashboards:
       searchNamespace: monitoring

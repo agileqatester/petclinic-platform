@@ -1827,7 +1827,7 @@ Create namespace definitions for dev and prod, including Pod Security Admission 
 # EPIC E-11: Observability
 
 **Priority:** P1
-**Description:** **ADR-0021:** Prometheus, Grafana, and Alertmanager run only on a tainted `t4g.large` node group (`enable_observability`, default false) in the EKS module. That group is authored and not applied. Helm values, alert rules, and dashboard JSON are in `helm-values/observability/` (chart 91.5.0). Not installed. No `helm install` until the cluster is up. No CloudWatch module. Loki, FluentBit, and Zipkin stay deferred (PETPLAT-59, PETPLAT-60). Live “metrics visible” waits on E-16 and PETPLAT-84.
+**Description:** **ADR-0021:** Prometheus, Grafana, Alertmanager, Loki, and Zipkin run on a tainted `t4g.large` node group (`enable_observability`, default false) in the EKS module. That group is authored and not applied. Helm values, alert rules, and dashboard JSON are in `helm-values/observability/` (kube-prometheus-stack 91.5.0, Loki 7.3.0, Fluent Bit 0.58.2). Zipkin is `helm/zipkin`. FluentBit is a DaemonSet on every node. Not installed. No `helm install` until the cluster is up. No CloudWatch module. Live metrics, logs, and traces wait on a cluster, PETPLAT-84, and E-16.
 **Blocked by:** E-3
 **Blocks:** None
 
@@ -1872,7 +1872,7 @@ Create namespace definitions for dev and prod, including Pod Security Admission 
 **Blocked by:** PETPLAT-55
 
 **Description:**
-**ADR-0021:** Author Grafana in the same Helm values: `monitoring` namespace, Prometheus datasource, same node selector and toleration. Loki datasource waits on PETPLAT-59. Admin password is a Kubernetes Secret created at install, never committed. Do not `helm install` in this story.
+**ADR-0021:** Author Grafana in the same Helm values: `monitoring` namespace, Prometheus datasource, Loki datasource `http://loki.monitoring.svc.cluster.local:3100`, same node selector and toleration. Admin password is a Kubernetes Secret created at install, never committed. Do not `helm install` in this story.
 
 **Technical Spec:** [Observability](./technical-spec.md#observability), [ADR-0021](./adr/ADR-0021-e11-observability-git-helm-subset.md)
 
@@ -1880,7 +1880,7 @@ Create namespace definitions for dev and prod, including Pod Security Admission 
 
 - [ ] Grafana values in `helm-values/observability/` target the observability node group
 - [ ] Prometheus datasource auto-configured
-- [ ] Loki datasource auto-configured — deferred with PETPLAT-59
+- [ ] Loki datasource auto-configured (`additionalDataSources` in the Grafana values; live config waits on install)
 - [ ] Grafana accessible (port-forward or ingress) — waits on cluster + `enable_observability=true`
 - [ ] Admin credentials stored in a Kubernetes Secret at install (never in git)
 - [ ] Persistent volume for dashboard state — waits on PETPLAT-84
@@ -1952,7 +1952,7 @@ Create namespace definitions for dev and prod, including Pod Security Admission 
 **Blocked by:** PETPLAT-16
 
 **Description:**
-**ADR-0021:** Deferred. Still in-cluster Loki ← FluentBit, no IRSA and no CloudWatch, but not part of the default install. The `t4g.large` is sized for Prometheus, Grafana, and Alertmanager. Adding Loki needs a later capacity decision (`t4g.xlarge` or its own node).
+**ADR-0021:** Author Loki and FluentBit for a short session on the same `t4g.large`. Loki is single-binary, 1Gi, empty disk, no IRSA and no CloudWatch. FluentBit is a DaemonSet on every node and ships to `loki.monitoring:3100`. Grafana gets a Loki datasource. Live logs and the 10Gi/50Gi volumes wait on a cluster and PETPLAT-84. LogQL alert rules are not in this slice.
 
 **Technical Spec:** [Observability](./technical-spec.md#observability)
 
@@ -1980,7 +1980,7 @@ Create namespace definitions for dev and prod, including Pod Security Admission 
 **Blocked by:** PETPLAT-16
 
 **Description:**
-**ADR-0021:** Deferred (P2). Stays in the backlog. Namespace `tracing`, port 9411, after E-16. Not required to close the Prometheus subset.
+**ADR-0021:** Author Zipkin in `helm/zipkin`, namespace `tracing`, port 9411, on the observability node, in-memory, 512Mi cap. The UI can open in a short session. Apps send traces only after E-16 sets the exporter URL.
 
 **Technical Spec:** [Observability](./technical-spec.md#observability)
 

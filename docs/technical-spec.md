@@ -980,7 +980,7 @@ git push
 
 ## Observability
 
-**Implementation:** Partial (ADR-0021). The tainted observability node group is in `terraform/modules/eks/` and wired from `terraform/environments/dev/workload/` with `enable_observability` default **false**. Not applied. Helm values are in `helm-values/observability/` for chart `kube-prometheus-stack` 91.5.0 (dev uses emptyDir; prod file is inventory). Not installed. `terraform/modules/observability/` stays an empty placeholder (no CloudWatch). Live `helm install`, “metrics visible”, and durable EBS wait on a cluster, `enable_observability=true`, and PETPLAT-84. Meaningful scrapes wait on E-16. Loki, FluentBit, and Zipkin (PETPLAT-59, PETPLAT-60) are deferred. Grafana admin password is a Kubernetes Secret at install time, never committed.
+**Implementation:** Partial (ADR-0021). The tainted observability node group is in `terraform/modules/eks/` and wired from `terraform/environments/dev/workload/` with `enable_observability` default **false**. Not applied. Helm values are in `helm-values/observability/` for chart `kube-prometheus-stack` 91.5.0 (dev uses emptyDir; prod file is inventory). Not installed. `terraform/modules/observability/` stays an empty placeholder (no CloudWatch). Live `helm install`, “metrics visible”, and durable EBS wait on a cluster, `enable_observability=true`, and PETPLAT-84. Meaningful scrapes wait on E-16. Loki, FluentBit, and Zipkin values are in git for a short session on that same node (Loki 1Gi empty disk, Zipkin 512Mi in-memory, FluentBit on every node). Not installed. Spec disk sizes still wait on PETPLAT-84. App trace export waits on E-16. Grafana admin password is a Kubernetes Secret at install time, never committed.
 
 Learning subset on that node: Prometheus, Grafana, Alertmanager. Node selector `workload=observability`, toleration `dedicated=observability:NoSchedule`. Before PETPLAT-84, a session may use emptyDir; the PV sizes below stay the contract once the EBS driver exists.
 
@@ -1012,7 +1012,7 @@ Learning subset on that node: Prometheus, Grafana, Alertmanager. Node selector `
 | Parameter | Value |
 |-----------|-------|
 | Namespace | `monitoring` |
-| Datasources | Prometheus (auto-configured). Loki when PETPLAT-59 is installed |
+| Datasources | Prometheus (auto-configured). Loki at `http://loki.monitoring.svc.cluster.local:3100` (`grafana.additionalDataSources`) |
 | Storage | PersistentVolume (EBS, 5Gi) |
 | Admin Credentials | Kubernetes Secret created at install. Never in git |
 | Dashboards | JSON in `helm-values/observability/dashboards/`, provisioned via the chart |
@@ -1065,6 +1065,8 @@ Learning subset on that node: Prometheus, Grafana, Alertmanager. Node selector `
 
 Loki receives logs from FluentBit and exposes them as a Grafana datasource. Log-based alert rules are defined as Loki alerting rules and routed through Alertmanager — same alert pipeline as Prometheus.
 
+**Short session (ADR-0021 amendment):** `helm-values/observability/loki.yaml` is grafana/loki 7.3.0 single-binary, memory cap 1Gi, emptyDir 2Gi at `/var/loki`, retention 168h, no S3 and no IRSA. The 10Gi/50Gi volumes stay the later contract (PETPLAT-84). LogQL rules in the table below are not in the values yet. Fluent Bit values are `helm-values/observability/fluent-bit.yaml` (chart 0.58.2, 64Mi cap, output `loki.monitoring:3100`). Not installed.
+
 #### Loki Alert Rules
 
 | Alert | LogQL Condition | Duration | Severity |
@@ -1080,6 +1082,7 @@ Loki receives logs from FluentBit and exposes them as a Grafana datasource. Log-
 | Port | 9411 |
 | Image | `openzipkin/zipkin` |
 | Services send traces via | OpenTelemetry exporter (configured in Spring Cloud Config) |
+| Short session | `helm/zipkin`, image `openzipkin/zipkin:3.5.1`, memory cap 512Mi, in-memory, node selector `workload=observability`. Not installed. App export waits on E-16. |
 
 ---
 
@@ -1782,4 +1785,4 @@ Architecture Decision Records are stored in `docs/adr/`.
 | ADR-0018 | E-8 is namespaces and NetworkPolicies only | Accepted | `k8s/base/namespaces.yaml` + `k8s/base/network-policies/`. API gateway ingress from public subnet CIDRs. PETPLAT-39–44 workloads are Helm (E-16). No Kustomize. No apply. |
 | ADR-0019 | E-9 freezes the env contract for Helm values | Accepted | Replica, HPA, and PDB numbers for `helm-values/{dev,prod}.yaml` (E-16). No `k8s/overlays/`. No apply. PETPLAT-48 deferred. Prod counts do not fit 2× t4g.small. |
 | ADR-0020 | E-10 CI: OIDC in keep network; fork builds; platform updates tags | Accepted | `petclinic-github-actions-role` in `environments/dev/network`. Reference `build-push.yml` copied into an app fork. `update-image-tags.yml` in this repo. No apply. PETPLAT-53 and PETPLAT-54 deferred. |
-| ADR-0021 | E-11 observability on a gated t4g.large node group | Accepted | Prometheus, Grafana, and Alertmanager on `petclinic-{env}-observability` only when `enable_observability=true` (default false). Helm values are in `helm-values/observability/` (chart 91.5.0). Not installed. No CloudWatch module. PETPLAT-59 and PETPLAT-60 deferred. Not applied. |
+| ADR-0021 | E-11 observability on a gated t4g.large node group | Accepted | Prometheus, Grafana, Alertmanager, Loki, and Zipkin on `petclinic-{env}-observability` only when `enable_observability=true` (default false). FluentBit is a DaemonSet on every node. Helm values are in `helm-values/observability/` and `helm/zipkin`. Not installed. No CloudWatch module. Not applied. |
