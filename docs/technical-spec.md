@@ -809,6 +809,8 @@ containers:
         type: RuntimeDefault
 ```
 
+**PETPLAT-101:** E-16 sets the pod fields (`runAsNonRoot`, `runAsUser`, `fsGroup`, `seccompProfile`) once on the pod. It copies the container fields (`allowPrivilegeEscalation`, `capabilities`, `readOnlyRootFilesystem`, `seccompProfile`) onto the app container and onto each wait-for init container. There are no Deployments under `k8s/base/`. `readOnlyRootFilesystem` stays false because Spring needs a writable `/tmp`. App ports are 8888, 8761, 8080–8084, and 9090, so do not add `NET_BIND_SERVICE`. No privileged containers. Zipkin keeps the non-root context already in `helm/zipkin`. Enforce stays `baseline` after E-16. Warn and audit stay `restricted`.
+
 ### Manifest File Structure
 
 Each service directory contains:
@@ -874,13 +876,17 @@ No PDB for genai-service or admin-server. E-16 renders these from `helm-values/p
 
 ### Resource Quotas
 
-Written later as namespace objects in `k8s/base/` (PETPLAT-89, E-13), not as Helm values. Use this table. The larger example numbers on PETPLAT-89 are not the contract.
+**ADR-0023:** both `requests.*` and `limits.*`, same numbers for `petclinic-dev` and `petclinic-prod`. Objects go in `k8s/base/resource-quotas.yaml` (not Helm values, not `monitoring` or `tracing`). Not applied.
 
-| Parameter | Dev | Prod |
-|-----------|-----|------|
-| Max CPU | 4 | 4 |
-| Max Memory | 4Gi | 4Gi |
-| Max Pods | 30 | 30 |
+| Key | Dev | Prod |
+|-----|-----|------|
+| `pods` | 30 | 30 |
+| `requests.cpu` / `limits.cpu` | 4 | 4 |
+| `requests.memory` / `limits.memory` | 4Gi | 4Gi |
+
+LimitRange type `Container`: `defaultRequest` 100m / 128Mi, `default` 500m / 512Mi, `max` 1000m / 512Mi. That is the majority container row. api-gateway stays 200m / 1000m when Helm sets it explicitly.
+
+Dev CPU limits for eight services are 4500m, so a full one-replica deploy does not admit. Prod baseline limits are about 8 CPU and 7Gi. Leave the table. Requests alone fit. The live check that a pod with no requests receives defaults waits on a cluster.
 
 ### Helm Values Structure (replaces Kustomize overlays)
 
@@ -1156,6 +1162,8 @@ Five IAM Roles for Service Accounts, each with OIDC trust policy scoped to a spe
 |-----------|---------|------|-------|
 | `petclinic-dev` | `baseline` | `restricted` | `restricted` |
 | `petclinic-prod` | `baseline` | `restricted` | `restricted` |
+
+Labels are on `k8s/base/namespaces.yaml` (ADR-0018). Not applied. Enforce stays `baseline`, including after E-16. A `restricted` enforce would reject any container that omits `runAsNonRoot`, including a wait-for init container. Warn and audit `restricted` report those gaps without stopping the pod.
 
 ### Operator access (no extra SKUs)
 
@@ -1779,7 +1787,7 @@ spec:
 
 ## ADR Index
 
-**Implementation:** Partial — decisions are recorded in this table. Written files: ADR-0001, ADR-0012, ADR-0013, ADR-0014, ADR-0015, ADR-0016, ADR-0017, ADR-0018, ADR-0019, ADR-0020, ADR-0021, ADR-0022. Remaining rows are index-only until E-15.
+**Implementation:** Partial — decisions are recorded in this table. Written files: ADR-0001, ADR-0012, ADR-0013, ADR-0014, ADR-0015, ADR-0016, ADR-0017, ADR-0018, ADR-0019, ADR-0020, ADR-0021, ADR-0022, ADR-0023. Remaining rows are index-only until E-15.
 
 Architecture Decision Records are stored in `docs/adr/`.
 
@@ -1807,3 +1815,4 @@ Architecture Decision Records are stored in `docs/adr/`.
 | ADR-0020 | E-10 CI: OIDC in keep network; fork builds; platform updates tags | Accepted | `petclinic-github-actions-role` in `environments/dev/network`. Reference `build-push.yml` copied into an app fork. `update-image-tags.yml` in this repo. No apply. PETPLAT-53 and PETPLAT-54 deferred. |
 | ADR-0021 | E-11 observability on a gated t4g.large node group | Accepted | Prometheus, Grafana, Alertmanager, Loki, and Zipkin on `petclinic-{env}-observability` only when `enable_observability=true` (default false). FluentBit is a DaemonSet on every node. Helm values are in `helm-values/observability/` and `helm/zipkin`. Not installed. No CloudWatch module. Not applied. |
 | ADR-0022 | E-13 IAM, security-group, and image-scan audit | Accepted | Git audit only. Security groups already match the spec. No authored `Action: "*"`. `Resource: "*"` stays for `ecr:GetAuthorizationToken` and the upstream LBC policy v2.14.1. Trivy CRITICAL plus ECR scan-on-push. No apply. PETPLAT-70 waits on images. |
+| ADR-0023 | ResourceQuota and LimitRange on the app namespaces | Accepted | `k8s/base/resource-quotas.yaml` for `petclinic-dev` and `petclinic-prod`. Hard keys `pods` 30, `requests` and `limits` CPU 4 and memory 4Gi. LimitRange defaults 100m/500m and 128Mi/512Mi, max 1000m/512Mi. Published sizes do not admit under `limits.*`. Not applied. |

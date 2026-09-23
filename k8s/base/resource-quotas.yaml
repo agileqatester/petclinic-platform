@@ -1,0 +1,76 @@
+# ResourceQuota and LimitRange (ADR-0023). Git only — do not kubectl apply.
+# petclinic-dev and petclinic-prod only. monitoring and tracing are out of scope.
+# limits.cpu 4 and limits.memory 4Gi will not admit the published app sizes.
+apiVersion: v1
+kind: ResourceQuota
+metadata:
+  name: petclinic-dev-compute
+  namespace: petclinic-dev
+  labels:
+    app.kubernetes.io/part-of: petclinic
+    environment: dev
+spec:
+  hard:
+    pods: "30"
+    requests.cpu: "4"
+    requests.memory: 4Gi
+    limits.cpu: "4"
+    limits.memory: 4Gi
+---
+apiVersion: v1
+kind: LimitRange
+metadata:
+  name: petclinic-dev-container-defaults
+  namespace: petclinic-dev
+  labels:
+    app.kubernetes.io/part-of: petclinic
+    environment: dev
+spec:
+  limits:
+    - type: Container
+      defaultRequest:
+        cpu: 100m
+        memory: 128Mi
+      default:
+        cpu: 500m
+        memory: 512Mi
+      max:
+        cpu: 1000m
+        memory: 512Mi
+---
+apiVersion: v1
+kind: ResourceQuota
+metadata:
+  name: petclinic-prod-compute
+  namespace: petclinic-prod
+  labels:
+    app.kubernetes.io/part-of: petclinic
+    environment: prod
+spec:
+  hard:
+    pods: "30"
+    requests.cpu: "4"
+    requests.memory: 4Gi
+    limits.cpu: "4"
+    limits.memory: 4Gi
+---
+apiVersion: v1
+kind: LimitRange
+metadata:
+  name: petclinic-prod-container-defaults
+  namespace: petclinic-prod
+  labels:
+    app.kubernetes.io/part-of: petclinic
+    environment: prod
+spec:
+  limits:
+    - type: Container
+      defaultRequest:
+        cpu: 100m
+        memory: 128Mi
+      default:
+        cpu: 500m
+        memory: 512Mi
+      max:
+        cpu: 1000m
+        memory: 512Mi

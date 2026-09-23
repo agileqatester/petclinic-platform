@@ -2690,16 +2690,16 @@ Define and implement the mechanism for how the CI pipeline updates Helm values f
 **Blocked by:** PETPLAT-38
 
 **Description:**
-Add ResourceQuotas and LimitRanges to petclinic namespaces. **ADR-0019:** this stays E-13. Write objects under `k8s/base/`, not Helm values. Use the spec table (max CPU 4, memory 4Gi, pods 30 for both namespaces). Ignore the larger example numbers below.
+**ADR-0023:** `k8s/base/resource-quotas.yaml` for `petclinic-dev` and `petclinic-prod` only. Hard keys are `pods` 30, `requests.cpu` and `limits.cpu` 4, `requests.memory` and `limits.memory` 4Gi. LimitRange defaults are 100m/128Mi request and 500m/512Mi limit, max 1000m/512Mi. Not applied. Published container sizes do not admit under `limits.*`.
 
-**Technical Spec:** [Kubernetes Overlays](./technical-spec.md#kubernetes-overlays)
+**Technical Spec:** [Kubernetes Overlays](./technical-spec.md#kubernetes-overlays), [ADR-0023](./adr/ADR-0023-resourcequota-limitrange-app-namespaces.md)
 
 **Acceptance Criteria:**
 
-- [ ] ResourceQuota per namespace: max CPU 4, memory 4Gi, max pods 30 (spec table, both dev and prod)
-- [ ] LimitRange: default requests and limits for containers that don't specify them
-- [ ] Verified: pod without resource requests gets default applied
-- [ ] `kubectl apply --dry-run=client` passes
+- [x] ResourceQuota per namespace: `pods` 30, requests and limits CPU 4 and memory 4Gi (`k8s/base/resource-quotas.yaml`)
+- [x] LimitRange: defaultRequest 100m/128Mi, default 500m/512Mi, max 1000m/512Mi
+- [ ] Verified: pod without resource requests gets defaults — waits on a cluster
+- [ ] `kubectl apply --dry-run=client` passes — after the file exists; not `kubectl apply`
 
 ---
 
@@ -2899,22 +2899,22 @@ Create a formal disaster recovery plan document with RTO/RPO definitions, backup
 **Blocked by:** PETPLAT-66, PETPLAT-68
 
 **Description:**
-Create a consolidated compliance checklist documenting all security controls, encryption, access control, audit logging, and data protection measures. This serves as a handover artifact and ongoing compliance reference.
+**PETPLAT-100:** `docs/compliance-checklist.md` records controls already decided (ADR-0012, ADR-0016, ADR-0022, ADR-0023). No new AWS resource. CloudTrail is not authored here. App RBAC waits on E-16.
 
-**Technical Spec:** [Security Controls](./technical-spec.md#security-controls)
+**Technical Spec:** [Security Controls](./technical-spec.md#security-controls), [compliance checklist](./compliance-checklist.md)
 
 **Acceptance Criteria:**
 
-- [ ] `docs/compliance-checklist.md` created
-- [ ] Encryption at rest inventory: RDS (KMS), EBS (default encryption), S3 (SSE), Secrets Manager (KMS)
-- [ ] Encryption in transit: TLS at ALB, internal communication status documented
-- [ ] IAM roles inventory with permission scope for each
-- [ ] K8s RBAC configuration summary
-- [ ] Audit logging: CloudTrail status, EKS audit logs, log retention
-- [ ] Data classification: what is PII, where stored, how protected
-- [ ] GDPR considerations: eu-central-1 data residency noted
-- [ ] Vulnerability scanning schedule (Checkov, Trivy in CI, ECR scan-on-push)
-- [ ] Remediation SLAs: Critical (24h), High (72h), Medium (1 week), Low (next sprint)
+- [x] `docs/compliance-checklist.md` created
+- [x] Encryption at rest inventory: RDS (`aws/rds`), EBS on launch templates, S3 SSE-S3, Secrets Manager (`aws/secretsmanager`)
+- [x] Encryption in transit: RDS TLS required; ALB HTTP until ACM (ADR-0016); pod-to-pod is not mTLS
+- [x] IAM roles inventory with permission scope for each (ADR-0022)
+- [x] Kubernetes access summary: access entry, PSA, NetworkPolicies, quotas; no app Role or RoleBinding yet
+- [x] Audit logging: no CloudTrail resource in this repo; EKS `api`/`audit`/`authenticator`, retention 7 days
+- [x] Data classification: course owner/pet/visit data in RDS; OpenAI key in Secrets Manager when enabled
+- [x] eu-central-1 residency noted (not a legal GDPR opinion)
+- [x] Vulnerability scanning schedule (Checkov, Trivy in CI, ECR scan-on-push)
+- [x] Remediation times: Critical 24h, High 72h, Medium 1 week, Low next sprint, while a stack is up
 
 ---
 
@@ -2930,19 +2930,19 @@ Create a consolidated compliance checklist documenting all security controls, en
 **Blocked by:** PETPLAT-38
 
 **Description:**
-Namespace PSA labels are written on `k8s/base/namespaces.yaml` in E-8 (ADR-0018): enforce `baseline`, warn and audit `restricted`. This story owns SecurityContext on Helm Deployments (E-16): `runAsNonRoot`, drop capabilities, restricted filesystem. Do not add a second namespace file.
+PSA labels are already on `k8s/base/namespaces.yaml` (ADR-0018): enforce `baseline`, warn and audit `restricted`. Do not add a second namespace file. Do not write Deployments under `k8s/base/`. E-16 renders the spec SecurityContext (`runAsNonRoot`, `runAsUser` 1000, drop ALL, `seccompProfile: RuntimeDefault`, `readOnlyRootFilesystem: false`). No `NET_BIND_SERVICE`. Live pod start waits on the chart and a cluster.
 
 **Technical Spec:** [Kubernetes Manifests](./technical-spec.md#kubernetes-manifests), [Security Controls](./technical-spec.md#security-controls)
 
 **Acceptance Criteria:**
 
-- [ ] PSA labels applied to petclinic-dev and petclinic-prod namespaces (enforce: baseline, warn: restricted)
-- [ ] All Deployments in base manifests set SecurityContext: runAsNonRoot: true
-- [ ] All containers: readOnlyRootFilesystem: true (where possible — Spring Boot may need /tmp writable)
-- [ ] All containers: drop ALL capabilities, add only NET_BIND_SERVICE if needed
+- [x] PSA labels in git on petclinic-dev and petclinic-prod (enforce baseline, warn and audit restricted). Not applied to a cluster
+- [ ] E-16 Deployments render SecurityContext `runAsNonRoot: true` (no Deployments under `k8s/base/`)
+- [ ] E-16 containers keep `readOnlyRootFilesystem: false` (Spring needs writable `/tmp`)
+- [ ] E-16 containers drop ALL capabilities. Do not add `NET_BIND_SERVICE` (ports are unprivileged)
 - [ ] No privileged containers
-- [ ] Verified: pods start successfully with security constraints
-- [ ] Documented: what PSA mode is enforced and why
+- [ ] Verified: pods start successfully with security constraints — waits on E-16 and a cluster
+- [x] Documented: enforce `baseline` so the first deploy is not rejected; warn and audit `restricted` report gaps (spec Pod Security Admission)
 
 ---
 
