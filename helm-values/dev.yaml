@@ -1,9 +1,18 @@
-# ADR-0019 / ADR-0024. One replica. HPA and PDB off.
+# ADR-0019 / ADR-0024. Install with: helm upgrade --install <service> ... -n petclinic-dev
+# Two t4g.small nodes (~1.4Gi allocatable, 11 pods). A warm JVM is ~320Mi.
+# Eight services do not fit. Admin stays at 0 so the other seven can run.
+# Observability adds a DaemonSet on every node (Fluent Bit, and the
+# kube-prometheus node exporter). maxSurge 0 keeps a rollout from taking
+# a second pod slot on top of those. HPA and PDB off.
 # Published limits still do not admit under the ADR-0023 quota. Not installed.
-namespace: petclinic-dev
 image:
   env: dev
 replicaCount: 1
+replicaByService:
+  admin-server: 0
+updateStrategy:
+  maxUnavailable: 1
+  maxSurge: 0
 autoscaling:
   enabled: false
 podDisruptionBudget:

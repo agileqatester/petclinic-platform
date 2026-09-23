@@ -10,6 +10,7 @@ One chart, `helm/petclinic-service/`, deploys any of the eight Petclinic service
 
 ```bash
 helm template config-server helm/petclinic-service/ \
+  -n petclinic-dev \
   -f helm-values/config-server.yaml \
   -f helm-values/dev.yaml
 ```
@@ -20,13 +21,13 @@ helm template config-server helm/petclinic-service/ \
 
 The service file sets the name, port, image name, image tag, Spring profiles, ConfigMap keys, secret refs, and init containers. The API gateway file also sets 200m/1000m CPU.
 
-`dev.yaml` sets namespace `petclinic-dev`, one replica, HPA off, PDB off.
+`dev.yaml` sets one replica, HPA off, and PDB off. `admin-server` is 0 replicas. Rollouts use `maxSurge: 0`. Pass `-n petclinic-dev` (or the ArgoCD destination). The templates do not set `metadata.namespace`.
 
-`prod.yaml` sets namespace `petclinic-prod` and per-service maps for replicas, HPA, and PDB. It does not turn HPA on for every service. Those counts are inventory. Do not install them on 2× t4g.small.
+`prod.yaml` is per-service maps for replicas, HPA, and PDB. It does not turn HPA on for every service. Those counts are inventory. Do not install them on 2× t4g.small. Pass `-n petclinic-prod`.
 
 ## Image tag
 
-Each service file has `image.tag: "0000000"`. CI replaces that field with a seven-character commit SHA. Do not use `latest`. The account stays the literal `{account}`.
+Each service file has `image.tag: "0000000"`. CI replaces that field with a seven-character commit SHA. Do not use `latest`. The account stays the literal `{account}`. At install, pass both with `--set-string`. The chart coerces them to strings so a numeric account id does not render as `%!s(int64=…)`.
 
 ## Add a service
 

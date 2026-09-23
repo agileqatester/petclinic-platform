@@ -11,7 +11,7 @@ app.kubernetes.io/part-of: petclinic
 {{- end -}}
 
 {{- define "petclinic.image" -}}
-{{- printf "%s.dkr.ecr.eu-central-1.amazonaws.com/petclinic-%s/%s:%s" .Values.image.account .Values.image.env .Values.image.name .Values.image.tag -}}
+{{- printf "%s.dkr.ecr.eu-central-1.amazonaws.com/petclinic-%s/%s:%s" (.Values.image.account | toString) .Values.image.env (.Values.image.name | toString) (.Values.image.tag | toString) -}}
 {{- end -}}
 
 {{- define "petclinic.replicas" -}}

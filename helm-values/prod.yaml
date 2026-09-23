@@ -1,6 +1,6 @@
 # ADR-0019 / ADR-0024. Inventory only. Do not install these counts on 2× t4g.small.
-# Maps override the chart defaults per service. Missing keys stay off.
-namespace: petclinic-prod
+# Install with -n petclinic-prod. Maps override the chart defaults per service.
+# Missing keys stay off.
 image:
   env: prod
 replicaByService:

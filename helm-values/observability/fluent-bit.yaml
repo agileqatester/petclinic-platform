@@ -1,6 +1,8 @@
-# Fluent Bit on every node, including the tainted observability node.
-# Forwards container logs to Loki. No AWS IAM. Not installed until the
-# cluster is up and Loki is in namespace monitoring.
+# Fluent Bit on every node, including the tainted observability node and
+# the two t4g.small app nodes. That is one extra pod and 32Mi on each
+# app node. Dev keeps admin-server at 0 replicas so the other seven
+# services still fit. Forwards container logs to Loki. No AWS IAM.
+# Not installed until the cluster is up and Loki is in namespace monitoring.
 #
 # Chart: fluent/fluent-bit 0.58.2
 #

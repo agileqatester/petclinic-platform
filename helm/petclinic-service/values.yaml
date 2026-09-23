@@ -4,7 +4,6 @@
 
 name: ""
 component: service
-namespace: petclinic-dev
 replicaCount: 1
 
 image:

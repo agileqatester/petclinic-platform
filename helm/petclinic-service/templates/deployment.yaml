@@ -2,11 +2,17 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: {{ .Values.name }}
-  namespace: {{ .Values.namespace }}
   labels:
     {{- include "petclinic.labels" . | nindent 4 }}
 spec:
   replicas: {{ include "petclinic.replicas" . }}
+  {{- with .Values.updateStrategy }}
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: {{ .maxUnavailable }}
+      maxSurge: {{ .maxSurge }}
+  {{- end }}
   selector:
     matchLabels:
       {{- include "petclinic.selectorLabels" . | nindent 6 }}

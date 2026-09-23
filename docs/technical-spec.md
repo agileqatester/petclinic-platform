@@ -1513,7 +1513,7 @@ Provisions the IAM roles, SQS queue, and EventBridge rules needed for Karpenter.
 
 ## Helm Charts
 
-**Implementation:** Partial (ADR-0024). `helm/petclinic-service/` plus `helm-values/{service}.yaml` and `helm-values/{dev,prod}.yaml` are in git. Not installed. `helm/zipkin` and `helm-values/observability/` are the E-11 session charts, not this epic. Image tag placeholder is `0000000`. Prod counts are per-service maps and are not applied on 2× t4g.small.
+**Implementation:** Partial (ADR-0024). `helm/petclinic-service/` plus `helm-values/{service}.yaml` and `helm-values/{dev,prod}.yaml` are in git. Not installed. `helm/zipkin` and `helm-values/observability/` are the E-11 session charts, not this epic. Image tag placeholder is `0000000`. The image helper stringifies account and tag. Templates omit `metadata.namespace`; install with `-n petclinic-dev`. Dev `admin-server` replicas are 0 and dev rollouts use `maxSurge: 0`, so seven JVMs plus a DaemonSet on each t4g.small can fit. Prod counts are per-service maps and are not applied on 2× t4g.small.
 
 ### Architecture Decision
 

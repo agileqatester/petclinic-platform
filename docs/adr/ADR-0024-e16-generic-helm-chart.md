@@ -10,7 +10,7 @@
 
 Chart `values.yaml`, then `helm-values/{service}.yaml`, then `helm-values/{env}.yaml`.
 
-`dev.yaml` sets namespace `petclinic-dev`, `image.env: dev`, `replicaCount: 1`, HPA off, PDB off.
+`dev.yaml` sets `image.env: dev`, `replicaCount: 1`, HPA off, PDB off. `admin-server` is `replicaByService: 0` because eight JVMs do not fit on 2× t4g.small once a DaemonSet (Fluent Bit, node exporter) is on every node. Dev rollouts use `maxSurge: 0`. The release namespace comes from `helm -n` or the ArgoCD destination (`petclinic-dev`), not from a `metadata.namespace` in the templates. The image helper prints account and tag with `toString`, because Helm `--set` stores a 12-digit account id as a number.
 
 `prod.yaml` does not set a flat replica count of 2. It uses maps keyed by service name:
 
