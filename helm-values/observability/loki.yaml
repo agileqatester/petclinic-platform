@@ -1,5 +1,5 @@
-# Short-session Loki on the tainted t4g.large. Not installed until the cluster
-# is up and enable_observability=true. Empty disk. Cap 1Gi. No S3, no MinIO,
+# Short-session Loki on the tainted t4g.large. Not installed. ADR-0026
+# shares that node with ArgoCD when both flags are true. Empty disk. Cap 1Gi. No S3, no MinIO,
 # no memcached. The 10Gi/50Gi volumes in the spec wait on PETPLAT-84.
 #
 # Chart: grafana/loki 7.3.0 (single binary, app 3.6.12). Release name must be `loki`

@@ -290,11 +290,11 @@ resource "aws_eks_node_group" "this" {
   depends_on = [aws_iam_role_policy_attachment.node]
 }
 
-# Tainted pool for Prometheus, Grafana, and Alertmanager. Own launch template so
-# the instance Name is petclinic-{env}-eks-observability (IMDSv2 hop 1, encrypted gp3).
-# Omitted unless enable_observability is true, so a normal apply pays nothing for this node.
+# Tainted pool shared by observability and ArgoCD (ADR-0021, ADR-0026).
+# Own launch template so the instance Name is petclinic-{env}-eks-observability
+# (IMDSv2 hop 1, encrypted gp3). Omitted unless either flag is true.
 resource "aws_eks_node_group" "observability" {
-  count = var.enable_observability ? 1 : 0
+  count = var.enable_observability || var.enable_argocd ? 1 : 0
 
   cluster_name    = aws_eks_cluster.this.name
   node_group_name = "${local.name_prefix}-observability"

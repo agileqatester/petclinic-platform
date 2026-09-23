@@ -37,7 +37,7 @@
 | 18 | [Docker Build](#docker-build) | Not started |
 | 19 | [Terraform Modules](#terraform-modules) | Partial |
 | 20 | [Helm Charts](#helm-charts) | Not started |
-| 21 | [GitOps with ArgoCD](#gitops-with-argocd) | Not started |
+| 21 | [GitOps with ArgoCD](#gitops-with-argocd) | Partial |
 | 22 | [Karpenter (Node Autoscaling)](#karpenter-node-autoscaling) | Not started |
 | 23 | [ADR Index](#adr-index) | Partial |
 
@@ -273,9 +273,9 @@ Created from EKS cluster identity issuer URL. Required for IRSA (IAM Roles for S
 
 > **Cost note:** t4g.small instances (2 vCPU, 2 GiB) are eligible for the AWS Graviton free trial (750 hrs/month until Dec 2026). Both dev and prod use identical sizing — this is a cost optimization for a learning project. In production, you would use larger instances (e.g., m7g.xlarge). Students should understand this trade-off.
 
-### Observability node group (ADR-0021)
+### Observability node group (ADR-0021, ADR-0026)
 
-Dev only. Created only when `enable_observability=true` on the workload apply. Default false: no node group and no instance. The next apply without the flag deletes it. Prod is not wired.
+Dev only. Created when `enable_observability=true` or `enable_argocd=true` on the workload apply (ADR-0026). Both default false: no node group and no instance. The next apply with both flags false deletes it. Prod is not wired. Terraform does not install either stack. The operator installs the charts that match the flags.
 
 | Parameter | Dev |
 |-----------|-----|
@@ -288,7 +288,7 @@ Dev only. Created only when `enable_observability=true` on the workload apply. D
 | Taint | `dedicated=observability:NO_SCHEDULE` |
 | Price while up | $0.0768/h (eu-central-1 On-Demand Linux). $0 when the flag is false |
 
-Prometheus, Grafana, and Alertmanager schedule here. `node-exporter` stays a DaemonSet on every node. Loki and Zipkin do not use this node. App pods stay on `petclinic-dev-nodes`.
+ArgoCD schedules here when `enable_argocd=true`: node selector `workload=observability`, toleration `dedicated=observability:NoSchedule`, memory caps in ADR-0025. Observability charts schedule here when `enable_observability=true`. Both flags true: both stacks on this node. App pods stay on `petclinic-dev-nodes`.
 
 ### Node IAM Role Policies
 
@@ -986,7 +986,7 @@ git push
 
 ## Observability
 
-**Implementation:** Partial (ADR-0021). The tainted observability node group is in `terraform/modules/eks/` and wired from `terraform/environments/dev/workload/` with `enable_observability` default **false**. Not applied. Helm values are in `helm-values/observability/` for chart `kube-prometheus-stack` 91.5.0 (dev uses emptyDir; prod file is inventory). Not installed. `terraform/modules/observability/` stays an empty placeholder (no CloudWatch). Live `helm install`, “metrics visible”, and durable EBS wait on a cluster, `enable_observability=true`, and PETPLAT-84. Meaningful scrapes wait on E-16. Loki, FluentBit, and Zipkin values are in git for a short session on that same node (Loki 1Gi empty disk, Zipkin 512Mi in-memory, FluentBit on every node). Not installed. Spec disk sizes still wait on PETPLAT-84. App trace export waits on E-16. Grafana admin password is a Kubernetes Secret at install time, never committed.
+**Implementation:** Partial (ADR-0021, ADR-0026). The tainted node group is in `terraform/modules/eks/` and wired from `terraform/environments/dev/workload/`. `enable_observability` or `enable_argocd` (both default **false**) creates the node group. Not applied. Helm values are in `helm-values/observability/` for chart `kube-prometheus-stack` 91.5.0 (dev uses emptyDir; prod file is inventory). Not installed. `terraform/modules/observability/` stays an empty placeholder (no CloudWatch). Live metrics, durable EBS, and a Prometheus session wait on a cluster and PETPLAT-84. Loki, FluentBit, and Zipkin values stay in git (Loki 1Gi empty disk, Zipkin 512Mi in-memory, FluentBit on every node). Not installed. Grafana admin password is a Kubernetes Secret at install time, never committed.
 
 Learning subset on that node: Prometheus, Grafana, Alertmanager. Node selector `workload=observability`, toleration `dedicated=observability:NoSchedule`. Before PETPLAT-84, a session may use emptyDir; the PV sizes below stay the contract once the EBS driver exists.
 
@@ -1226,7 +1226,7 @@ This is a learning project. Instance choices maximize AWS free tier eligibility.
 |----------|---------|----------|-----------|
 | EKS Control Plane | $73 | $73 | None — unavoidable cost |
 | EC2 Nodes (2x t4g.small) | $0 | $0 | Graviton free trial (750 hrs/mo until Dec 2026) |
-| Observability node (1x t4g.large) | $0 unless `-var=enable_observability=true`, then **$0.0768/h** | not wired | ADR-0021. Apply again without the flag to delete it. Not in the free-trial t4g.small allowance |
+| Observability node (1x t4g.large) | $0 unless `-var=enable_observability=true` or `-var=enable_argocd=true`, then **$0.0768/h** | not wired | ADR-0026. One node for either stack, or both. Apply again with both flags false to delete it. Not in the free-trial t4g.small allowance |
 | RDS MySQL (db.t4g.micro) | ~$0 session / **~$0.019/h** OnDemand | same | Free-tier hours are an allowance, not “$0 if left on.” Destroy with workload (ADR-0015). |
 | ALB | ~$0 session / **~$0.027/h** + LCU | same | Created by LBC after Ingress apply; destroy with cluster (ADR-0016). Do not treat 24/7 as $0. |
 | S3 + DynamoDB (state) | ~$0 | ~$0 | SSE-S3 + PAY_PER_REQUEST; no CMK |
@@ -1618,7 +1618,7 @@ ArgoCD automates this — see [GitOps with ArgoCD](#gitops-with-argocd).
 
 ## GitOps with ArgoCD
 
-**Implementation:** Not started.
+**Implementation:** Partial (PETPLAT-112). `k8s/argocd/install/` pins Argo CD v3.5.2 and schedules it onto the observability node. Not installed.
 
 ### Architecture Decision
 
@@ -1629,8 +1629,10 @@ ArgoCD handles all deployments (CD). GitHub Actions is CI-only (build, push, com
 | Parameter | Value |
 |-----------|-------|
 | Namespace | `argocd` |
-| Installation | `kubectl apply -n argocd -f k8s/argocd/install/` |
-| Version | Latest stable (pinned in install manifests) |
+| Node | `workload=observability` with toleration `dedicated=observability:NoSchedule` (ADR-0026). Requires `-var=enable_argocd=true`. Shares the node with observability when that flag is also true |
+| Memory caps | controller 512Mi, repo server 256Mi, server 128Mi, Redis 128Mi |
+| Installation | `kubectl apply -n argocd --server-side --force-conflicts -k k8s/argocd/install` |
+| Version | v3.5.2 (non-HA `manifests/install.yaml`) |
 | Access | `kubectl port-forward svc/argocd-server -n argocd 8443:443` |
 | Admin password | Auto-generated, stored in `argocd-initial-admin-secret` |
 
@@ -1813,7 +1815,9 @@ Architecture Decision Records are stored in `docs/adr/`.
 | ADR-0018 | E-8 is namespaces and NetworkPolicies only | Accepted | `k8s/base/namespaces.yaml` + `k8s/base/network-policies/`. API gateway ingress from public subnet CIDRs. PETPLAT-39–44 workloads are Helm (E-16). No Kustomize. No apply. |
 | ADR-0019 | E-9 freezes the env contract for Helm values | Accepted | Replica, HPA, and PDB numbers for `helm-values/{dev,prod}.yaml` (E-16). No `k8s/overlays/`. No apply. PETPLAT-48 deferred. Prod counts do not fit 2× t4g.small. |
 | ADR-0020 | E-10 CI: OIDC in keep network; fork builds; platform updates tags | Accepted | `petclinic-github-actions-role` in `environments/dev/network`. Reference `build-push.yml` copied into an app fork. `update-image-tags.yml` in this repo. No apply. PETPLAT-53 and PETPLAT-54 deferred. |
-| ADR-0021 | E-11 observability on a gated t4g.large node group | Accepted | Prometheus, Grafana, Alertmanager, Loki, and Zipkin on `petclinic-{env}-observability` only when `enable_observability=true` (default false). FluentBit is a DaemonSet on every node. Helm values are in `helm-values/observability/` and `helm/zipkin`. Not installed. No CloudWatch module. Not applied. |
+| ADR-0021 | E-11 observability on a gated t4g.large node group | Accepted | Helm values for Prometheus, Grafana, Alertmanager, Loki, Zipkin, and FluentBit. Not installed. No CloudWatch module. The node flags are ADR-0026. |
 | ADR-0022 | E-13 IAM, security-group, and image-scan audit | Accepted | Git audit only. Security groups already match the spec. No authored `Action: "*"`. `Resource: "*"` stays for `ecr:GetAuthorizationToken` and the upstream LBC policy v2.14.1. Trivy CRITICAL plus ECR scan-on-push. No apply. PETPLAT-70 waits on images. |
 | ADR-0023 | ResourceQuota and LimitRange on the app namespaces | Accepted | `k8s/base/resource-quotas.yaml` for `petclinic-dev` and `petclinic-prod`. Hard keys `pods` 30, `requests` and `limits` CPU 4 and memory 4Gi. LimitRange defaults 100m/500m and 128Mi/512Mi, max 1000m/512Mi. Published sizes do not admit under `limits.*`. Not applied. |
 | ADR-0024 | E-16 generic Helm chart and env values | Accepted | `helm/petclinic-service/` plus eight service files and `dev.yaml` / `prod.yaml`. Prod uses per-service replica, HPA, and PDB maps. Tag placeholder `0000000`. Not installed. No app IRSA. |
+| ADR-0025 | ArgoCD reuses the observability node group | Accepted | ArgoCD runs on the tainted `t4g.large` with memory caps. No `helm_release`. The single-flag replacement is amended by ADR-0026. Not applied. |
+| ADR-0026 | Two flags share the observability node | Accepted | `enable_observability` and `enable_argocd` (both default false). The node exists when either is true. Both stacks share it when both are true. Terraform installs neither. Not applied. |

@@ -1827,7 +1827,7 @@ Create namespace definitions for dev and prod, including Pod Security Admission 
 # EPIC E-11: Observability
 
 **Priority:** P1
-**Description:** **ADR-0021:** Prometheus, Grafana, Alertmanager, Loki, and Zipkin run on a tainted `t4g.large` node group (`enable_observability`, default false) in the EKS module. That group is authored and not applied. Helm values, alert rules, and dashboard JSON are in `helm-values/observability/` (kube-prometheus-stack 91.5.0, Loki 7.3.0, Fluent Bit 0.58.2). Zipkin is `helm/zipkin`. FluentBit is a DaemonSet on every node. Not installed. No `helm install` until the cluster is up. No CloudWatch module. Live metrics, logs, and traces wait on a cluster, PETPLAT-84, and E-16.
+**Description:** **ADR-0021 / ADR-0026:** Prometheus, Grafana, Alertmanager, Loki, and Zipkin values target the tainted `t4g.large`. That node exists when `enable_observability=true` or `enable_argocd=true`. Helm values, alert rules, and dashboard JSON are in `helm-values/observability/` (kube-prometheus-stack 91.5.0, Loki 7.3.0, Fluent Bit 0.58.2). Zipkin is `helm/zipkin`. FluentBit is a DaemonSet on every node. Not installed. No CloudWatch module. Live metrics, logs, and traces wait on a later ADR, a cluster, and PETPLAT-84.
 **Blocked by:** E-3
 **Blocks:** None
 
@@ -1845,7 +1845,7 @@ Create namespace definitions for dev and prod, including Pod Security Admission 
 **Blocked by:** PETPLAT-16, PETPLAT-84
 
 **Description:**
-**ADR-0021:** Author Prometheus in `helm-values/observability/` (kube-prometheus-stack or equivalent): namespace `monitoring`, node selector `workload=observability`, toleration `dedicated=observability:NoSchedule`, scrape interval 15s, eight `/actuator/prometheus` jobs. The node group already exists in the EKS module and stays off unless `enable_observability=true`. Do not `helm install` in this story. PV size 10Gi dev is the contract after PETPLAT-84; emptyDir is allowed before that.
+**ADR-0021:** Author Prometheus in `helm-values/observability/` (kube-prometheus-stack or equivalent): namespace `monitoring`, node selector `workload=observability`, toleration `dedicated=observability:NoSchedule`, scrape interval 15s, eight `/actuator/prometheus` jobs. The node group stays off unless `enable_observability=true` or `enable_argocd=true` (ADR-0026). Do not `helm install` in this story. PV size 10Gi dev is the contract after PETPLAT-84; emptyDir is allowed before that.
 
 **Technical Spec:** [Observability](./technical-spec.md#observability), [ADR-0021](./adr/ADR-0021-e11-observability-git-helm-subset.md)
 
@@ -1854,7 +1854,7 @@ Create namespace definitions for dev and prod, including Pod Security Admission 
 - [ ] Prometheus values in `helm-values/observability/` target the observability node group
 - [ ] Scrape config targets all 8 services on /actuator/prometheus
 - [ ] Scrape interval: 15s
-- [ ] Prometheus web UI accessible (port-forward or ingress) — waits on cluster + `enable_observability=true`
+- [ ] Prometheus web UI accessible (port-forward or ingress) — waits on a later ADR. ADR-0025 gives the node to ArgoCD
 - [ ] Verified: metrics from all services visible in Prometheus — waits on E-16
 - [ ] Persistent volume for metric retention (configurable days) — waits on PETPLAT-84
 
@@ -1881,7 +1881,7 @@ Create namespace definitions for dev and prod, including Pod Security Admission 
 - [ ] Grafana values in `helm-values/observability/` target the observability node group
 - [ ] Prometheus datasource auto-configured
 - [ ] Loki datasource auto-configured (`additionalDataSources` in the Grafana values; live config waits on install)
-- [ ] Grafana accessible (port-forward or ingress) — waits on cluster + `enable_observability=true`
+- [ ] Grafana accessible (port-forward or ingress) — waits on a later ADR. ADR-0025 gives the node to ArgoCD
 - [ ] Admin credentials stored in a Kubernetes Secret at install (never in git)
 - [ ] Persistent volume for dashboard state — waits on PETPLAT-84
 
@@ -3237,19 +3237,21 @@ Document the Helm chart structure, values file conventions, and how to add a new
 **Blocked by:** PETPLAT-16
 
 **Description:**
-Install ArgoCD on the EKS cluster in a dedicated `argocd` namespace. Include the ArgoCD server, repo server, application controller, and Redis. Store manifests in `k8s/argocd/install/`.
+Install ArgoCD on the EKS cluster in a dedicated `argocd` namespace. Include the ArgoCD server, repo server, application controller, and Redis. Store manifests in `k8s/argocd/install/`. **ADR-0026:** schedule every ArgoCD pod on the observability node (`workload=observability`, toleration `dedicated=observability:NoSchedule`) after `-var=enable_argocd=true`. Memory caps: controller 512Mi, repo server 256Mi, server 128Mi, Redis 128Mi. Observability charts are a separate flag and may share this node when `enable_observability=true`.
 
 **Technical Spec:** [GitOps with ArgoCD](./technical-spec.md#gitops-with-argocd)
 
 **Acceptance Criteria:**
 
 - [ ] ArgoCD installed in `argocd` namespace using official manifests
-- [ ] Installation manifests stored at `k8s/argocd/install/`
-- [ ] ArgoCD server, repo-server, application-controller, Redis all running and healthy
+- [x] Installation manifests stored at `k8s/argocd/install/`
+- [ ] ArgoCD server, repo-server, application-controller, Redis all running and healthy on the observability node
+- [x] Node selector `workload=observability` and toleration `dedicated=observability:NoSchedule` (ADR-0026)
+- [x] Memory caps: controller 512Mi, repo server 256Mi, server 128Mi, Redis 128Mi
 - [ ] ArgoCD CLI (`argocd`) can connect to the cluster
 - [ ] ArgoCD UI accessible via port-forward (`kubectl port-forward svc/argocd-server -n argocd 8443:443`)
 - [ ] Initial admin password retrieved and documented
-- [ ] ArgoCD version pinned to a specific release
+- [x] ArgoCD version pinned to a specific release (v3.5.2)
 
 ---
 

@@ -16,7 +16,7 @@ Every module directory MUST contain:
 
 Environment root modules (`terraform/environments/{env}/network/` keep, `{env}/workload/` destroy) additionally have:
 
-EKS (cluster, OIDC, managed node group, IAM, Access Entries) is called from **workload**, never network (ADR-0013). Node group waits on the NAT ENI. Do not wire prod this epic. A second node group, `petclinic-{env}-observability` (1× t4g.large, taint `dedicated=observability:NO_SCHEDULE`), exists only when `enable_observability=true` (ADR-0021, default false). Do not set that flag in tfvars.
+EKS (cluster, OIDC, managed node group, IAM, Access Entries) is called from **workload**, never network (ADR-0013). Node group waits on the NAT ENI. Do not wire prod this epic. A second node group, `petclinic-{env}-observability` (1× t4g.large, taint `dedicated=observability:NO_SCHEDULE`), exists when `enable_observability=true` or `enable_argocd=true` (ADR-0026, both default false). Do not set either flag in tfvars. Neither flag installs charts.
 
 ECR private repositories are called from **network**, never workload (ADR-0014). Dev only this epic.
 

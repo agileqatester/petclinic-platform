@@ -10,7 +10,8 @@ nat_instance_type = "t4g.micro"
 # Do not put openai_api_key here. Empty skips the secret (genai uses demo).
 #   TF_VAR_openai_api_key='sk-...' terraform plan ...
 #
-# Do not set enable_observability here. Default is false (no t4g.large).
-# A short Prometheus session only:
+# Do not set enable_observability or enable_argocd here. Both default false (no t4g.large).
+# One session:
 #   -var=enable_observability=true
-# Apply again without that flag to delete the node.
+#   -var=enable_argocd=true
+# Both flags true: one node, both stacks. Apply again with both false to delete the node.

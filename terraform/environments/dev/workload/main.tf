@@ -45,6 +45,7 @@ module "eks" {
   api_allowed_cidrs = [var.my_ip]
 
   enable_observability              = var.enable_observability
+  enable_argocd                     = var.enable_argocd
   observability_node_instance_types = ["t4g.large"]
 
   # Module-level: Terraform cannot depends_on a variable. NAT is minutes; cluster is ~10.

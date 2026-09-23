@@ -1,5 +1,5 @@
-# Dev learning values. Install only when the cluster is up and
-# enable_observability=true. Persistence is emptyDir until PETPLAT-84 (EBS CSI).
+# Dev learning values. Installed only for an enable_observability session (ADR-0026).
+# Persistence is emptyDir until PETPLAT-84 (EBS CSI).
 # Contract sizes after that: Prometheus 10Gi, Grafana 5Gi.
 # This chart's node exporter is a DaemonSet on every node, same as Fluent Bit.
 # Dev app nodes keep admin-server at 0 replicas so that slot stays free.

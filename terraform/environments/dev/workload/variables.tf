@@ -48,7 +48,13 @@ variable "my_ip" {
 }
 
 variable "enable_observability" {
-  description = "Create the tainted t4g.large for Prometheus. Default false. Pass -var=enable_observability=true only for a short observability session; the next apply without it removes that node."
+  description = "Create the tainted t4g.large for an observability session (ADR-0026). Default false. The node also exists when enable_argocd is true. Does not install charts."
+  type        = bool
+  default     = false
+}
+
+variable "enable_argocd" {
+  description = "Create the tainted t4g.large for an ArgoCD session (ADR-0026). Default false. The node also exists when enable_observability is true. Does not install ArgoCD."
   type        = bool
   default     = false
 }

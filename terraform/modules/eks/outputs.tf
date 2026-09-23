@@ -30,7 +30,7 @@ output "node_group_name" {
 }
 
 output "observability_node_group_name" {
-  description = "Tainted observability node group name. Null when enable_observability is false."
+  description = "Tainted node group name. Null when enable_observability and enable_argocd are both false."
   value       = one(aws_eks_node_group.observability[*].node_group_name)
 }
 

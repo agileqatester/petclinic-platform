@@ -61,13 +61,19 @@ variable "node_desired_size" {
 }
 
 variable "enable_observability" {
-  description = "Create the tainted t4g.large observability node group. False skips it so a normal apply does not pay for that instance."
+  description = "Create the tainted t4g.large for an observability session (ADR-0026). The node also exists when enable_argocd is true. Does not install charts."
+  type        = bool
+  default     = false
+}
+
+variable "enable_argocd" {
+  description = "Create the tainted t4g.large for an ArgoCD session (ADR-0026). The node also exists when enable_observability is true. Does not install ArgoCD."
   type        = bool
   default     = false
 }
 
 variable "observability_node_instance_types" {
-  description = "Instance types for the tainted observability node group (Prometheus, Grafana, Alertmanager). Used only when enable_observability is true."
+  description = "Instance types for the tainted node group. Used when enable_observability or enable_argocd is true."
   type        = list(string)
   default     = ["t4g.large"]
 }
