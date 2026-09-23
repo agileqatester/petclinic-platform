@@ -1513,7 +1513,7 @@ Provisions the IAM roles, SQS queue, and EventBridge rules needed for Karpenter.
 
 ## Helm Charts
 
-**Implementation:** Not started — no `helm/` or `helm-values/`.
+**Implementation:** Partial (ADR-0024). `helm/petclinic-service/` plus `helm-values/{service}.yaml` and `helm-values/{dev,prod}.yaml` are in git. Not installed. `helm/zipkin` and `helm-values/observability/` are the E-11 session charts, not this epic. Image tag placeholder is `0000000`. Prod counts are per-service maps and are not applied on 2× t4g.small.
 
 ### Architecture Decision
 
@@ -1530,7 +1530,7 @@ helm/
         ├── deployment.yaml     # Deployment with probes, resources, env vars, init containers
         ├── service.yaml        # ClusterIP Service
         ├── configmap.yaml      # Non-secret configuration
-        ├── serviceaccount.yaml # ServiceAccount with IRSA annotation
+        ├── serviceaccount.yaml # App ServiceAccount. No IRSA annotation (ADR-0024)
         ├── hpa.yaml            # HPA (conditional on .Values.autoscaling.enabled)
         ├── pdb.yaml            # PDB (conditional on .Values.podDisruptionBudget.enabled)
         └── _helpers.tpl        # Template helpers (labels, names, selectors)
@@ -1542,7 +1542,7 @@ helm/
 replicaCount: 1
 image:
   repository: ""   # Set per-service: {account}.dkr.ecr.eu-central-1.amazonaws.com/petclinic-{env}/{service}
-  tag: ""          # CI sets a commit SHA. Never latest.
+  tag: "0000000"   # CI replaces this with a commit SHA. Never latest. ADR-0024.
   pullPolicy: IfNotPresent
 
 service:
@@ -1598,7 +1598,7 @@ helm-values/
 ├── genai-service.yaml         # port: 8084, OPENAI_API_KEY env var
 ├── admin-server.yaml          # port: 9090
 ├── dev.yaml                   # Dev overrides: replicas=1, no HPA, no PDB
-└── prod.yaml                  # Prod overrides: replicas=2, HPA enabled, PDB enabled
+└── prod.yaml                  # Per-service replica, HPA, and PDB maps (ADR-0024). Not a flat replicas=2.
 ```
 
 ### Helm Install / Upgrade Command
@@ -1787,7 +1787,7 @@ spec:
 
 ## ADR Index
 
-**Implementation:** Partial — decisions are recorded in this table. Written files: ADR-0001, ADR-0012, ADR-0013, ADR-0014, ADR-0015, ADR-0016, ADR-0017, ADR-0018, ADR-0019, ADR-0020, ADR-0021, ADR-0022, ADR-0023. Remaining rows are index-only until E-15.
+**Implementation:** Partial — decisions are recorded in this table. Written files: ADR-0001, ADR-0012, ADR-0013, ADR-0014, ADR-0015, ADR-0016, ADR-0017, ADR-0018, ADR-0019, ADR-0020, ADR-0021, ADR-0022, ADR-0023, ADR-0024. Remaining rows are index-only until E-15.
 
 Architecture Decision Records are stored in `docs/adr/`.
 
@@ -1816,3 +1816,4 @@ Architecture Decision Records are stored in `docs/adr/`.
 | ADR-0021 | E-11 observability on a gated t4g.large node group | Accepted | Prometheus, Grafana, Alertmanager, Loki, and Zipkin on `petclinic-{env}-observability` only when `enable_observability=true` (default false). FluentBit is a DaemonSet on every node. Helm values are in `helm-values/observability/` and `helm/zipkin`. Not installed. No CloudWatch module. Not applied. |
 | ADR-0022 | E-13 IAM, security-group, and image-scan audit | Accepted | Git audit only. Security groups already match the spec. No authored `Action: "*"`. `Resource: "*"` stays for `ecr:GetAuthorizationToken` and the upstream LBC policy v2.14.1. Trivy CRITICAL plus ECR scan-on-push. No apply. PETPLAT-70 waits on images. |
 | ADR-0023 | ResourceQuota and LimitRange on the app namespaces | Accepted | `k8s/base/resource-quotas.yaml` for `petclinic-dev` and `petclinic-prod`. Hard keys `pods` 30, `requests` and `limits` CPU 4 and memory 4Gi. LimitRange defaults 100m/500m and 128Mi/512Mi, max 1000m/512Mi. Published sizes do not admit under `limits.*`. Not applied. |
+| ADR-0024 | E-16 generic Helm chart and env values | Accepted | `helm/petclinic-service/` plus eight service files and `dev.yaml` / `prod.yaml`. Prod uses per-service replica, HPA, and PDB maps. Tag placeholder `0000000`. Not installed. No app IRSA. |

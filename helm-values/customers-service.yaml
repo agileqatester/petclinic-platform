@@ -1,0 +1,24 @@
+name: customers-service
+component: service
+image:
+  name: customers-service
+  tag: "0000000"
+service:
+  port: 8081
+spring:
+  profiles: docker,mysql
+config:
+  CONFIG_SERVER_URL: http://config-server:8888
+  SPRING_DATASOURCE_URL: jdbc:mysql://{rds-endpoint}:3306/petclinic?sslMode=REQUIRED
+secretEnv:
+  - name: SPRING_DATASOURCE_USERNAME
+    secretName: rds-credentials
+    key: username
+  - name: SPRING_DATASOURCE_PASSWORD
+    secretName: rds-credentials
+    key: password
+initContainers:
+  - name: wait-for-config-server
+    url: http://config-server:8888/actuator/health
+  - name: wait-for-discovery-server
+    url: http://discovery-server:8761/actuator/health

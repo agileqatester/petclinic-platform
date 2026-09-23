@@ -1,0 +1,21 @@
+name: genai-service
+component: service
+image:
+  name: genai-service
+  tag: "0000000"
+service:
+  port: 8084
+spring:
+  profiles: docker
+config:
+  CONFIG_SERVER_URL: http://config-server:8888
+secretEnv:
+  - name: OPENAI_API_KEY
+    secretName: openai-api-key
+    key: OPENAI_API_KEY
+    optional: true
+initContainers:
+  - name: wait-for-config-server
+    url: http://config-server:8888/actuator/health
+  - name: wait-for-discovery-server
+    url: http://discovery-server:8761/actuator/health

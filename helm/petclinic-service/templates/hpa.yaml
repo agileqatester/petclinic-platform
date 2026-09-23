@@ -1,0 +1,24 @@
+{{- $auto := include "petclinic.autoscaling" . | fromYaml }}
+{{- if $auto.enabled }}
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: {{ .Values.name }}
+  namespace: {{ .Values.namespace }}
+  labels:
+    {{- include "petclinic.labels" . | nindent 4 }}
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: {{ .Values.name }}
+  minReplicas: {{ $auto.minReplicas }}
+  maxReplicas: {{ $auto.maxReplicas }}
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: {{ $auto.targetCPUUtilizationPercentage }}
+{{- end }}

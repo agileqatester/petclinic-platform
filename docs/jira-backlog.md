@@ -3066,7 +3066,7 @@ Add a vulnerability scanning step to the CI build pipeline that fails the build 
 # EPIC E-16: Helm Charts
 
 **Priority:** P0
-**Description:** Create a generic Helm chart for Petclinic microservices and per-service/per-environment values files. All 8 services share the same chart. **ADR-0018:** this epic owns the Deployments, Services, ConfigMaps, probes, JDBC, and init containers. **ADR-0019:** `helm-values/{dev,prod}.yaml` encode the frozen replica, HPA, and PDB contract. Do not apply prod counts on 2× t4g.small.
+**Description:** **ADR-0024:** `helm/petclinic-service/` plus eight service values files and `helm-values/{dev,prod}.yaml`. Prod uses per-service replica, HPA, and PDB maps. Not installed. Do not apply prod counts on 2× t4g.small. ArgoCD stays E-17.
 **Blocked by:** E-8 (namespaces), E-9 (values requirements)
 **Blocks:** E-17 (ArgoCD deploys Helm charts)
 
@@ -3090,15 +3090,15 @@ Create a generic, reusable Helm chart at `helm/petclinic-service/` that can depl
 
 **Acceptance Criteria:**
 
-- [ ] Chart at `helm/petclinic-service/` with Chart.yaml, values.yaml, templates/
-- [ ] Templates: deployment.yaml, service.yaml, configmap.yaml, serviceaccount.yaml, hpa.yaml, pdb.yaml
-- [ ] HPA and PDB templates are conditional (only rendered when enabled in values)
-- [ ] Default values.yaml with sensible defaults for all 8 services
-- [ ] Supports: image repository/tag, replicas, resources, ports, env vars, probes, secrets
-- [ ] Supports: initContainers (for service dependency ordering)
-- [ ] Labels follow Kubernetes recommended labels (app.kubernetes.io/*)
-- [ ] `helm lint helm/petclinic-service/` passes
-- [ ] `helm template` renders valid YAML for each service
+- [x] Chart at `helm/petclinic-service/` with Chart.yaml, values.yaml, templates/
+- [x] Templates: deployment.yaml, service.yaml, configmap.yaml, serviceaccount.yaml, hpa.yaml, pdb.yaml
+- [x] HPA and PDB templates are conditional (only rendered when enabled in values)
+- [x] Default values.yaml with sensible defaults for all 8 services
+- [x] Supports: image repository/tag, replicas, resources, ports, env vars, probes, secrets
+- [x] Supports: initContainers (for service dependency ordering)
+- [x] Labels follow Kubernetes recommended labels (app.kubernetes.io/*)
+- [x] `helm lint helm/petclinic-service/` passes (empty default `name` warns; renders with a service file are named)
+- [x] `helm template` renders valid YAML for each service
 
 ---
 
@@ -3120,13 +3120,13 @@ Create per-service values files at `helm-values/{service}.yaml` for all 8 Petcli
 
 **Acceptance Criteria:**
 
-- [ ] Values files created for all 8 services: `helm-values/config-server.yaml`, `helm-values/discovery-server.yaml`, `helm-values/api-gateway.yaml`, `helm-values/customers-service.yaml`, `helm-values/visits-service.yaml`, `helm-values/vets-service.yaml`, `helm-values/genai-service.yaml`, `helm-values/admin-server.yaml`
-- [ ] Each file specifies: image repo (`{account}.dkr.ecr.eu-central-1.amazonaws.com/petclinic-{env}/{service}`), image tag, container port, service port
-- [ ] Database services (customers, visits, vets): Spring profiles `docker,mysql`, datasource URL, secret references for RDS credentials
-- [ ] GenAI service: secret reference for OpenAI API key from Secrets Manager (via ESO)
-- [ ] Config Server: GIT_REPO URL for config
-- [ ] All services: CONFIG_SERVER_URL, readiness/liveness probe paths
-- [ ] `helm template` with each values file renders correct manifests
+- [x] Values files created for all 8 services: `helm-values/config-server.yaml`, `helm-values/discovery-server.yaml`, `helm-values/api-gateway.yaml`, `helm-values/customers-service.yaml`, `helm-values/visits-service.yaml`, `helm-values/vets-service.yaml`, `helm-values/genai-service.yaml`, `helm-values/admin-server.yaml`
+- [x] Each file specifies image name and tag `0000000`. The chart composes `{account}.dkr.ecr.eu-central-1.amazonaws.com/petclinic-{env}/{service}`
+- [x] Database services (customers, visits, vets): Spring profiles `docker,mysql`, datasource URL with `{rds-endpoint}`, secret references for RDS credentials
+- [x] GenAI service: secret reference for OpenAI API key (`optional: true`)
+- [x] Config Server: GIT_REPO and `SPRING_CLOUD_CONFIG_SERVER_GIT_URI` for the public config repo
+- [x] All services: CONFIG_SERVER_URL, readiness/liveness probe paths
+- [x] `helm template` with each values file renders correct manifests
 
 ---
 
@@ -3148,12 +3148,12 @@ Create `helm-values/dev.yaml` and `helm-values/prod.yaml` from the ADR-0019 cont
 
 **Acceptance Criteria:**
 
-- [ ] `helm-values/dev.yaml` — 1 replica per service, namespace petclinic-dev, HPA off, PDB off
-- [ ] `helm-values/prod.yaml` — replicas per ADR-0019 (genai and admin stay 1), namespace petclinic-prod, HPA and PDB per the spec tables
-- [ ] Prod values include PDB settings (minAvailable=1)
-- [ ] Prod values include HPA settings (min/max replicas, target CPU)
-- [ ] Values are merged with per-service values when deploying: `helm install -f helm-values/{service}.yaml -f helm-values/{env}.yaml`
-- [ ] `helm template` with combined values files renders correct manifests
+- [x] `helm-values/dev.yaml` — 1 replica per service, namespace petclinic-dev, HPA off, PDB off
+- [x] `helm-values/prod.yaml` — per-service replica map (genai and admin stay 1), namespace petclinic-prod
+- [x] Prod PDB map: minAvailable=1 for config, discovery, gateway, customers, visits, vets
+- [x] Prod HPA map: gateway 2–6, MySQL services 2–4, genai 1–3, target CPU 70%
+- [x] Merge order: chart defaults, then service file, then env file
+- [x] `helm template` with combined values files renders correct manifests
 
 ---
 
@@ -3175,12 +3175,12 @@ Validate that Helm template rendering produces correct, deployable Kubernetes ma
 
 **Acceptance Criteria:**
 
-- [ ] `helm lint helm/petclinic-service/` passes
-- [ ] `helm template` renders valid YAML for each of the 8 services with dev values
-- [ ] `helm template` renders valid YAML for each of the 8 services with prod values
-- [ ] `kubectl apply --dry-run=client` passes on all rendered templates
-- [ ] Rendered output matches expected: correct ports, env vars, secrets, probes, replicas
-- [ ] Script created at `scripts/validate-helm.sh` to automate this validation for all services and environments
+- [x] `helm lint helm/petclinic-service/` passes
+- [x] `helm template` renders valid YAML for each of the 8 services with dev values
+- [x] `helm template` renders valid YAML for each of the 8 services with prod values
+- [ ] `kubectl apply --dry-run=client` passes on all rendered templates — local kubeconfig is an unrelated cluster; not the gate (ADR-0024)
+- [x] Rendered output matches expected: correct ports, env vars, secrets, probes, replicas
+- [x] Script created at `scripts/validate-helm.sh` to automate this validation for all services and environments
 
 ---
 
@@ -3202,13 +3202,13 @@ Document the Helm chart structure, values file conventions, and how to add a new
 
 **Acceptance Criteria:**
 
-- [ ] Documentation in `docs/helm-guide.md` or as a section in architecture.md
-- [ ] Chart structure explained: templates, values hierarchy
-- [ ] How to: deploy a service manually with Helm
-- [ ] How to: add a new service (create values file, add ArgoCD Application)
-- [ ] How to: change resources, replicas, or environment variables
-- [ ] Values merge order documented: defaults < per-service < per-environment
-- [ ] Integration with ArgoCD documented (E-17)
+- [x] Documentation in `docs/helm-guide.md`
+- [x] Chart structure explained: templates, values hierarchy
+- [x] How to: deploy a service manually with Helm (command documented, not run)
+- [x] How to: add a new service values file. ArgoCD Application stays E-17
+- [x] How to: change resources, replicas, or environment variables
+- [x] Values merge order documented: defaults, then per-service, then per-environment
+- [x] ArgoCD called out as E-17. No Application manifests in this epic
 
 ---
 

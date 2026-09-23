@@ -1,0 +1,59 @@
+# ADR-0019 / ADR-0024. Inventory only. Do not install these counts on 2× t4g.small.
+# Maps override the chart defaults per service. Missing keys stay off.
+namespace: petclinic-prod
+image:
+  env: prod
+replicaByService:
+  config-server: 2
+  discovery-server: 2
+  api-gateway: 2
+  customers-service: 2
+  visits-service: 2
+  vets-service: 2
+  genai-service: 1
+  admin-server: 1
+autoscalingByService:
+  api-gateway:
+    enabled: true
+    minReplicas: 2
+    maxReplicas: 6
+    targetCPUUtilizationPercentage: 70
+  customers-service:
+    enabled: true
+    minReplicas: 2
+    maxReplicas: 4
+    targetCPUUtilizationPercentage: 70
+  visits-service:
+    enabled: true
+    minReplicas: 2
+    maxReplicas: 4
+    targetCPUUtilizationPercentage: 70
+  vets-service:
+    enabled: true
+    minReplicas: 2
+    maxReplicas: 4
+    targetCPUUtilizationPercentage: 70
+  genai-service:
+    enabled: true
+    minReplicas: 1
+    maxReplicas: 3
+    targetCPUUtilizationPercentage: 70
+podDisruptionBudgetByService:
+  config-server:
+    enabled: true
+    minAvailable: 1
+  discovery-server:
+    enabled: true
+    minAvailable: 1
+  api-gateway:
+    enabled: true
+    minAvailable: 1
+  customers-service:
+    enabled: true
+    minAvailable: 1
+  visits-service:
+    enabled: true
+    minAvailable: 1
+  vets-service:
+    enabled: true
+    minAvailable: 1

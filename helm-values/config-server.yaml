@@ -1,0 +1,19 @@
+name: config-server
+component: server
+image:
+  name: config-server
+  tag: "0000000"
+service:
+  port: 8888
+spring:
+  profiles: docker
+probes:
+  readiness:
+    path: /actuator/health
+  liveness:
+    path: /actuator/health
+config:
+  CONFIG_SERVER_URL: http://config-server:8888
+  SPRING_CLOUD_CONFIG_SERVER_GIT_URI: https://github.com/spring-petclinic/spring-petclinic-microservices-config
+  GIT_REPO: https://github.com/spring-petclinic/spring-petclinic-microservices-config
+initContainers: []

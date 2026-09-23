@@ -1,0 +1,14 @@
+name: discovery-server
+component: server
+image:
+  name: discovery-server
+  tag: "0000000"
+service:
+  port: 8761
+spring:
+  profiles: docker
+config:
+  CONFIG_SERVER_URL: http://config-server:8888
+initContainers:
+  - name: wait-for-config-server
+    url: http://config-server:8888/actuator/health
