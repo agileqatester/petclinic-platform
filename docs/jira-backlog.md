@@ -2021,7 +2021,7 @@ Create namespace definitions for dev and prod, including Pod Security Admission 
 # EPIC E-13: Security & Compliance
 
 **Priority:** P1
-**Description:** Security hardening across the stack: IAM least privilege, K8s RBAC and network policies, image scanning, Terraform security scanning, security group audit.
+**Description:** **ADR-0022:** git audit of IAM, security groups, and image scanning. Checkov (PETPLAT-66) is closed. NetworkPolicy YAML is already in git (ADR-0018); live checks wait on a cluster and PETPLAT-84. Security groups already match the spec. No Terraform change and no apply. PETPLAT-70 waits on fork images. PETPLAT-89, PETPLAT-100, and PETPLAT-101 stay later stories in this epic.
 **Blocked by:** E-3
 **Blocks:** None
 
@@ -2096,18 +2096,17 @@ Run Checkov on all Terraform modules and fix critical/high findings.
 **Blocked by:** PETPLAT-16, PETPLAT-26
 
 **Description:**
-Audit all IAM roles and policies for least privilege.
+**ADR-0022:** Audit the roles already in the repo (EKS cluster, nodes, NAT SSM, LBC, ESO, GitHub Actions). No authored `Action: "*"`. `Resource: "*"` stays for `ecr:GetAuthorizationToken` and upstream LBC policy v2.14.1. No Terraform edit and no apply.
 
-**Technical Spec:** [IRSA Roles](./technical-spec.md#irsa-roles), [Security Controls](./technical-spec.md#security-controls)
+**Technical Spec:** [IRSA Roles](./technical-spec.md#irsa-roles), [Security Controls](./technical-spec.md#security-controls), [ADR-0022](./adr/ADR-0022-e13-iam-sg-image-scan-audit.md)
 
 **Acceptance Criteria:**
 
-- [ ] No wildcard (*) actions in any policy
-- [ ] No wildcard (*) resources where avoidable
-- [ ] EKS node role has only required managed policies
-- [ ] IRSA roles scoped to specific Secrets Manager secrets/resources
-- [ ] No bastion host IAM role (bastion removed from scope)
-- [ ] All policies documented with justification
+- [x] No authored `Action: "*"`. `Resource: "*"` only for `ecr:GetAuthorizationToken` and `iam-policy-lbc.json` (upstream v2.14.1)
+- [x] EKS node role has only the four spec managed policies
+- [x] ESO IRSA is `GetSecretValue` and `DescribeSecret` on `secret:petclinic/*`. LBC uses the upstream policy unchanged
+- [x] No bastion host IAM role (bastion removed from scope)
+- [x] Roles documented with justification (ADR-0022 and the spec IAM audit)
 
 ---
 
@@ -2123,17 +2122,17 @@ Audit all IAM roles and policies for least privilege.
 **Blocked by:** PETPLAT-20
 
 **Description:**
-Set up vulnerability scanning for container images. ECR Private supports scan-on-push (enabled in PETPLAT-18). Additionally, use Trivy in CI (PETPLAT-105) for early detection before push. Review scan results from both sources.
+**ADR-0022:** ECR scan-on-push and the reference Trivy CRITICAL gate are already in git. The review process is in the spec. A console review waits until the application fork has pushed images.
 
-**Technical Spec:** [ECR Container Registry](./technical-spec.md#ecr-container-registry)
+**Technical Spec:** [ECR Container Registry](./technical-spec.md#ecr-container-registry), [ADR-0022](./adr/ADR-0022-e13-iam-sg-image-scan-audit.md)
 
 **Acceptance Criteria:**
 
-- [ ] ECR scan-on-push enabled on all repositories (configured in PETPLAT-18)
-- [ ] Trivy scan integrated into CI pipeline (PETPLAT-105) for pre-push scanning
-- [ ] After pushing images, review ECR scan findings in AWS Console
-- [ ] Critical CVEs addressed (update base image or document exception)
-- [ ] Scan results review process documented
+- [x] ECR scan-on-push enabled on all repositories (configured in PETPLAT-18)
+- [x] Trivy scan in the reference CI workflow fails on CRITICAL (ADR-0020; live copy is the app fork)
+- [ ] After pushing images, review ECR scan findings in the AWS console
+- [ ] Critical CVEs addressed (update base image or document exception) — waits on images
+- [x] Scan results review process documented (spec Image scan review)
 
 ---
 
@@ -2149,7 +2148,7 @@ Set up vulnerability scanning for container images. ECR Private supports scan-on
 **Blocked by:** PETPLAT-20
 
 **Description:**
-Run Trivy locally or in CI on all 8 Docker images.
+**ADR-0022:** Waits on images from the application fork. The reference workflow already fails Trivy on CRITICAL. This story is the live eight-image pass and the comparison with ECR findings.
 
 **Technical Spec:** [ECR Container Registry](./technical-spec.md#ecr-container-registry), [CI/CD Pipeline](./technical-spec.md#cicd-pipeline)
 
@@ -2174,18 +2173,18 @@ Run Trivy locally or in CI on all 8 Docker images.
 **Blocked by:** PETPLAT-8
 
 **Description:**
-Audit all security groups for overly permissive rules.
+**ADR-0022:** VPC and NAT security groups already match the spec. No port 22, no bastion group, RDS 3306 from the node group only, ALB 80/443 from the internet. No Terraform edit and no apply.
 
-**Technical Spec:** [Security Groups](./technical-spec.md#security-groups)
+**Technical Spec:** [Security Groups](./technical-spec.md#security-groups), [ADR-0022](./adr/ADR-0022-e13-iam-sg-image-scan-audit.md)
 
 **Acceptance Criteria:**
 
-- [ ] No security group allows 0.0.0.0/0 on SSH (port 22)
-- [ ] RDS SG only allows 3306 from EKS nodes
-- [ ] ALB SG only allows 80/443 from internet
-- [ ] EKS node SG only allows required ports
-- [ ] No bastion SG (bastion removed from scope)
-- [ ] Audit findings documented
+- [x] No security group allows 0.0.0.0/0 on SSH (port 22)
+- [x] RDS SG only allows 3306 from EKS nodes
+- [x] ALB SG only allows 80/443 from the internet
+- [x] EKS node SG only allows the spec ports
+- [x] No bastion SG (bastion removed from scope)
+- [x] Audit findings documented (ADR-0022)
 
 ---
 

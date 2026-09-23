@@ -173,7 +173,7 @@ CIDRs are non-overlapping to allow future VPC peering if needed. Public subnets 
 
 ## Security Groups
 
-**Implementation:** Slice 1 — VPC SGs in `terraform/modules/vpc/security_groups.tf`; NAT SG in `terraform/modules/nat/`.
+**Implementation:** Slice 1 — VPC SGs in `terraform/modules/vpc/security_groups.tf`; NAT SG in `terraform/modules/nat/`. PETPLAT-71 (ADR-0022): these rules already match the tables below. No security-group edit in E-13.
 
 Five security groups per environment. Security groups remain mandatory. Private subnets are an extra layer, not a replacement (ADR-0001).
 
@@ -1088,7 +1088,7 @@ Loki receives logs from FluentBit and exposes them as a Grafana datasource. Log-
 
 ## IRSA Roles
 
-**Implementation:** Partial — LBC role `petclinic-{env}-lb-controller-role` and ESO role `petclinic-{env}-eso-role` are authored in **workload** (ADR-0016 / ADR-0017). Helm/ESO install waits on E-3 apply.
+**Implementation:** Partial — LBC role `petclinic-{env}-lb-controller-role` and ESO role `petclinic-{env}-eso-role` are authored in **workload** (ADR-0016 / ADR-0017). Helm/ESO install waits on E-3 apply. ADR-0022 audited both and left them unchanged. EBS CSI, ArgoCD, and Karpenter rows are still later.
 
 Five IAM Roles for Service Accounts, each with OIDC trust policy scoped to a specific Kubernetes ServiceAccount. FluentBit no longer requires an IRSA role — it sends logs to Loki in-cluster.
 
@@ -1125,7 +1125,7 @@ Five IAM Roles for Service Accounts, each with OIDC trust policy scoped to a spe
 
 ## Security Controls
 
-**Implementation:** Partial — state-bucket SSE-S3 + HTTPS-only policy and gitignore/hooks for secrets. RDS TLS is required (ADR-0015). Namespace PSA labels and NetworkPolicy YAML are in git (ADR-0018) and not applied. VPC CNI NetworkPolicy stays PETPLAT-84.
+**Implementation:** Partial — state-bucket SSE-S3 + HTTPS-only policy and gitignore/hooks for secrets. RDS TLS is required (ADR-0015). Namespace PSA labels and NetworkPolicy YAML are in git (ADR-0018) and not applied. VPC CNI NetworkPolicy stays PETPLAT-84. ADR-0022 records the IAM and security-group audit in git: groups already match this spec, and there is no Terraform change. Not applied.
 
 ### Encryption Matrix
 
@@ -1173,6 +1173,26 @@ SSM does not work with the network stack alone (no instances, no NAT).
 ### Checkov (PETPLAT-66)
 
 Scan Terraform with Checkov 3.2.484 (`.checkov.yaml` + `./scripts/checkov.sh`). Global skips are budget/learning-account checks (VPC Flow Logs, IAM permissions boundary, EC2 detailed monitoring, EBS optimized on `t4g.micro`). Resource skips are `# checkov:skip=` comments: ALB HTTP `0.0.0.0/0` (ADR-0001), NAT public IP, and keep-stack SGs that attach when EKS/RDS/ALB land. Install once: `python3 -m venv .venv && .venv/bin/pip install -r requirements-checkov.txt`.
+
+### IAM audit (PETPLAT-68, ADR-0022)
+
+Customer-authored policies have no `Action: "*"`. These `Resource: "*"` cases stay:
+
+| Where | Why it stays |
+|-------|----------------|
+| `github_oidc.tf` `ecr:GetAuthorizationToken` | AWS does not support a repository ARN for that API |
+| `iam-policy-lbc.json` (upstream v2.14.1) | Describe APIs and a few mutate calls have no resource ARN. Do not fork the policy |
+| AWS managed cluster, node, and SSM policies | Spec attaches them as-is. IMDSv2 hop 1 limits pod use of the node role |
+
+ESO is `secretsmanager:GetSecretValue` and `DescribeSecret` on `secret:petclinic/*` only. The node role is the four spec managed policies. There is no bastion role. Full role table: [ADR-0022](./adr/ADR-0022-e13-iam-sg-image-scan-audit.md).
+
+### Image scan review (PETPLAT-69, ADR-0022)
+
+1. **Before push.** The reference workflow `.github/workflow-templates/build-push.yml` runs Trivy and fails on CRITICAL. The live copy is in the application fork (ADR-0020).
+2. **On push.** Every ECR repository has `scan_on_push = true` (basic scanning, ADR-0014).
+3. **After the first successful fork push.** Review findings in the eu-central-1 console for `petclinic-dev/*`. If ECR reports CRITICAL on an image Trivy allowed, do not promote the tag. Fix `eclipse-temurin:17` or record a dated exception.
+
+A console review and PETPLAT-70 wait until those images exist.
 
 ### Operator IP (`my_ip`)
 
@@ -1759,7 +1779,7 @@ spec:
 
 ## ADR Index
 
-**Implementation:** Partial — decisions are recorded in this table. Written files: ADR-0001, ADR-0012, ADR-0013, ADR-0014, ADR-0015, ADR-0016, ADR-0017, ADR-0018, ADR-0019, ADR-0020, ADR-0021. Remaining rows are index-only until E-15.
+**Implementation:** Partial — decisions are recorded in this table. Written files: ADR-0001, ADR-0012, ADR-0013, ADR-0014, ADR-0015, ADR-0016, ADR-0017, ADR-0018, ADR-0019, ADR-0020, ADR-0021, ADR-0022. Remaining rows are index-only until E-15.
 
 Architecture Decision Records are stored in `docs/adr/`.
 
@@ -1786,3 +1806,4 @@ Architecture Decision Records are stored in `docs/adr/`.
 | ADR-0019 | E-9 freezes the env contract for Helm values | Accepted | Replica, HPA, and PDB numbers for `helm-values/{dev,prod}.yaml` (E-16). No `k8s/overlays/`. No apply. PETPLAT-48 deferred. Prod counts do not fit 2× t4g.small. |
 | ADR-0020 | E-10 CI: OIDC in keep network; fork builds; platform updates tags | Accepted | `petclinic-github-actions-role` in `environments/dev/network`. Reference `build-push.yml` copied into an app fork. `update-image-tags.yml` in this repo. No apply. PETPLAT-53 and PETPLAT-54 deferred. |
 | ADR-0021 | E-11 observability on a gated t4g.large node group | Accepted | Prometheus, Grafana, Alertmanager, Loki, and Zipkin on `petclinic-{env}-observability` only when `enable_observability=true` (default false). FluentBit is a DaemonSet on every node. Helm values are in `helm-values/observability/` and `helm/zipkin`. Not installed. No CloudWatch module. Not applied. |
+| ADR-0022 | E-13 IAM, security-group, and image-scan audit | Accepted | Git audit only. Security groups already match the spec. No authored `Action: "*"`. `Resource: "*"` stays for `ecr:GetAuthorizationToken` and the upstream LBC policy v2.14.1. Trivy CRITICAL plus ECR scan-on-push. No apply. PETPLAT-70 waits on images. |
