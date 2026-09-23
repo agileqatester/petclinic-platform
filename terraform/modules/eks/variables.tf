@@ -60,6 +60,18 @@ variable "node_desired_size" {
   default     = 2
 }
 
+variable "enable_observability" {
+  description = "Create the tainted t4g.large observability node group. False skips it so a normal apply does not pay for that instance."
+  type        = bool
+  default     = false
+}
+
+variable "observability_node_instance_types" {
+  description = "Instance types for the tainted observability node group (Prometheus, Grafana, Alertmanager). Used only when enable_observability is true."
+  type        = list(string)
+  default     = ["t4g.large"]
+}
+
 variable "node_disk_size" {
   description = "Root volume size in GB (gp3, encrypted)"
   type        = number

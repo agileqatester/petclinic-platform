@@ -1827,7 +1827,7 @@ Create namespace definitions for dev and prod, including Pod Security Admission 
 # EPIC E-11: Observability
 
 **Priority:** P1
-**Description:** Deploy the observability stack: Prometheus for metrics, Grafana for dashboards and log exploration, Loki for log aggregation, Alertmanager for alert routing and notifications (both metric and log alerts), FluentBit for log collection (forwards to Loki), and Zipkin for distributed tracing. All tools run in-cluster — no AWS-side logging infrastructure required.
+**Description:** **ADR-0021:** Prometheus, Grafana, and Alertmanager run only on a tainted `t4g.large` node group (`enable_observability`, default false) in the EKS module. That group is authored and not applied. Helm values, alert rules, and dashboard JSON are in `helm-values/observability/` (chart 91.5.0). Not installed. No `helm install` until the cluster is up. No CloudWatch module. Loki, FluentBit, and Zipkin stay deferred (PETPLAT-59, PETPLAT-60). Live “metrics visible” waits on E-16 and PETPLAT-84.
 **Blocked by:** E-3
 **Blocks:** None
 
@@ -1845,18 +1845,18 @@ Create namespace definitions for dev and prod, including Pod Security Admission 
 **Blocked by:** PETPLAT-16, PETPLAT-84
 
 **Description:**
-Deploy Prometheus on EKS to scrape metrics from all 8 Petclinic services via their /actuator/prometheus endpoints.
+**ADR-0021:** Author Prometheus in `helm-values/observability/` (kube-prometheus-stack or equivalent): namespace `monitoring`, node selector `workload=observability`, toleration `dedicated=observability:NoSchedule`, scrape interval 15s, eight `/actuator/prometheus` jobs. The node group already exists in the EKS module and stays off unless `enable_observability=true`. Do not `helm install` in this story. PV size 10Gi dev is the contract after PETPLAT-84; emptyDir is allowed before that.
 
-**Technical Spec:** [Observability](./technical-spec.md#observability)
+**Technical Spec:** [Observability](./technical-spec.md#observability), [ADR-0021](./adr/ADR-0021-e11-observability-git-helm-subset.md)
 
 **Acceptance Criteria:**
 
-- [ ] Prometheus deployed to monitoring namespace
+- [ ] Prometheus values in `helm-values/observability/` target the observability node group
 - [ ] Scrape config targets all 8 services on /actuator/prometheus
 - [ ] Scrape interval: 15s
-- [ ] Prometheus web UI accessible (port-forward or ingress)
-- [ ] Verified: metrics from all services visible in Prometheus
-- [ ] Persistent volume for metric retention (configurable days)
+- [ ] Prometheus web UI accessible (port-forward or ingress) — waits on cluster + `enable_observability=true`
+- [ ] Verified: metrics from all services visible in Prometheus — waits on E-16
+- [ ] Persistent volume for metric retention (configurable days) — waits on PETPLAT-84
 
 ---
 
@@ -1872,18 +1872,18 @@ Deploy Prometheus on EKS to scrape metrics from all 8 Petclinic services via the
 **Blocked by:** PETPLAT-55
 
 **Description:**
-Deploy Grafana with Prometheus and Loki as datasources.
+**ADR-0021:** Author Grafana in the same Helm values: `monitoring` namespace, Prometheus datasource, same node selector and toleration. Loki datasource waits on PETPLAT-59. Admin password is a Kubernetes Secret created at install, never committed. Do not `helm install` in this story.
 
-**Technical Spec:** [Observability](./technical-spec.md#observability)
+**Technical Spec:** [Observability](./technical-spec.md#observability), [ADR-0021](./adr/ADR-0021-e11-observability-git-helm-subset.md)
 
 **Acceptance Criteria:**
 
-- [ ] Grafana deployed to monitoring namespace
+- [ ] Grafana values in `helm-values/observability/` target the observability node group
 - [ ] Prometheus datasource auto-configured
-- [ ] Loki datasource auto-configured
-- [ ] Grafana accessible (port-forward or ingress)
-- [ ] Admin credentials stored in K8s Secret (or Secrets Manager via ESO)
-- [ ] Persistent volume for dashboard state
+- [ ] Loki datasource auto-configured — deferred with PETPLAT-59
+- [ ] Grafana accessible (port-forward or ingress) — waits on cluster + `enable_observability=true`
+- [ ] Admin credentials stored in a Kubernetes Secret at install (never in git)
+- [ ] Persistent volume for dashboard state — waits on PETPLAT-84
 
 ---
 
@@ -1899,17 +1899,17 @@ Deploy Grafana with Prometheus and Loki as datasources.
 **Blocked by:** PETPLAT-56
 
 **Description:**
-Create Grafana dashboards for each Petclinic service showing key metrics.
+**ADR-0021:** Dashboard JSON under `helm-values/observability/dashboards/`, provisioned by the chart. Not `k8s/base/observability/grafana-dashboards/`.
 
-**Technical Spec:** [Observability](./technical-spec.md#observability)
+**Technical Spec:** [Observability](./technical-spec.md#observability), [ADR-0021](./adr/ADR-0021-e11-observability-git-helm-subset.md)
 
 **Acceptance Criteria:**
 
 - [ ] Dashboard per service showing: request rate (RPS), error rate, p95/p99 latency
 - [ ] Overview dashboard showing all services at a glance
 - [ ] JVM metrics dashboard: heap usage, GC pauses, thread count
-- [ ] Dashboards exported as JSON in `k8s/base/observability/grafana-dashboards/`
-- [ ] Dashboards provisioned automatically via ConfigMap
+- [ ] Dashboards exported as JSON in `helm-values/observability/dashboards/`
+- [ ] Dashboards provisioned automatically via the chart (ConfigMap or sidecar)
 
 ---
 
@@ -1925,9 +1925,9 @@ Create Grafana dashboards for each Petclinic service showing key metrics.
 **Blocked by:** PETPLAT-55
 
 **Description:**
-Create Prometheus alerting rules for key conditions.
+**ADR-0021:** Alert rules in `helm-values/observability/alerts/` (PrometheusRule or chart values). Spec table: ServiceDown, HighErrorRate, HighLatency, PodRestartLoop, HighMemoryUsage. No cluster apply in this story.
 
-**Technical Spec:** [Observability](./technical-spec.md#observability)
+**Technical Spec:** [Observability](./technical-spec.md#observability), [ADR-0021](./adr/ADR-0021-e11-observability-git-helm-subset.md)
 
 **Acceptance Criteria:**
 
@@ -1952,7 +1952,7 @@ Create Prometheus alerting rules for key conditions.
 **Blocked by:** PETPLAT-16
 
 **Description:**
-Deploy Loki for log aggregation and FluentBit as a DaemonSet to collect and forward container logs to Loki. All in-cluster — no AWS IAM roles or CloudWatch resources required.
+**ADR-0021:** Deferred. Still in-cluster Loki ← FluentBit, no IRSA and no CloudWatch, but not part of the default install. The `t4g.large` is sized for Prometheus, Grafana, and Alertmanager. Adding Loki needs a later capacity decision (`t4g.xlarge` or its own node).
 
 **Technical Spec:** [Observability](./technical-spec.md#observability)
 
@@ -1980,7 +1980,7 @@ Deploy Loki for log aggregation and FluentBit as a DaemonSet to collect and forw
 **Blocked by:** PETPLAT-16
 
 **Description:**
-Deploy Zipkin on EKS for distributed tracing. The app already exports traces via OpenTelemetry.
+**ADR-0021:** Deferred (P2). Stays in the backlog. Namespace `tracing`, port 9411, after E-16. Not required to close the Prometheus subset.
 
 **Technical Spec:** [Observability](./technical-spec.md#observability)
 

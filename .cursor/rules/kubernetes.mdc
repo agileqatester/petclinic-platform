@@ -21,7 +21,7 @@ k8s/
     └── applications/{dev,prod}/
 ```
 
-Do not create Kustomize overlays or per-service Deployment YAML. Those were superseded by Helm (ADR-0007, ADR-0018, ADR-0019). E-8 is `namespaces.yaml` and `network-policies/` only. E-9 does not add `k8s/overlays/`.
+Do not create Kustomize overlays or per-service Deployment YAML. Those were superseded by Helm (ADR-0007, ADR-0018, ADR-0019). E-8 is `namespaces.yaml` and `network-policies/` only. E-9 does not add `k8s/overlays/`. Observability dashboards and Prometheus rules live under `helm-values/observability/`, not `k8s/base/` (ADR-0021).
 
 ## Required Labels
 

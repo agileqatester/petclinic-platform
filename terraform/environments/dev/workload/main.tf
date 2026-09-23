@@ -44,6 +44,9 @@ module "eks" {
   node_sg_id        = data.terraform_remote_state.network.outputs.eks_node_sg_id
   api_allowed_cidrs = [var.my_ip]
 
+  enable_observability              = var.enable_observability
+  observability_node_instance_types = ["t4g.large"]
+
   # Module-level: Terraform cannot depends_on a variable. NAT is minutes; cluster is ~10.
   depends_on = [aws_route.private_default]
 }

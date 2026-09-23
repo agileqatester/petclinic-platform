@@ -30,7 +30,7 @@
 | 11 | [Kubernetes Manifests](#kubernetes-manifests) | Partial |
 | 12 | [Kubernetes Overlays](#kubernetes-overlays) | Partial |
 | 13 | [CI/CD Pipeline](#cicd-pipeline) | Partial |
-| 14 | [Observability](#observability) | Not started |
+| 14 | [Observability](#observability) | Partial |
 | 15 | [IRSA Roles](#irsa-roles) | Not started |
 | 16 | [Security Controls](#security-controls) | Partial |
 | 17 | [Scaling and Cost](#scaling-and-cost) | Not started |
@@ -272,6 +272,23 @@ Created from EKS cluster identity issuer URL. Required for IRSA (IAM Roles for S
 | IMDS | `http_tokens = required`, `http_put_response_hop_limit = 1` | Same |
 
 > **Cost note:** t4g.small instances (2 vCPU, 2 GiB) are eligible for the AWS Graviton free trial (750 hrs/month until Dec 2026). Both dev and prod use identical sizing — this is a cost optimization for a learning project. In production, you would use larger instances (e.g., m7g.xlarge). Students should understand this trade-off.
+
+### Observability node group (ADR-0021)
+
+Dev only. Created only when `enable_observability=true` on the workload apply. Default false: no node group and no instance. The next apply without the flag deletes it. Prod is not wired.
+
+| Parameter | Dev |
+|-----------|-----|
+| Node Group Name | `petclinic-dev-observability` |
+| Instance Types | `["t4g.large"]` (8 GiB). Not `t4g.medium`. |
+| Min / Max / Desired | 1 / 1 / 1 while the flag is true |
+| AMI / IMDS / disk | Same as the app group: `AL2023_ARM_64_STANDARD`, IMDSv2 hop 1, 20 GB encrypted gp3 |
+| Launch template Name | `petclinic-dev-eks-observability` (own template; same security posture) |
+| Label | `workload=observability` |
+| Taint | `dedicated=observability:NO_SCHEDULE` |
+| Price while up | $0.0768/h (eu-central-1 On-Demand Linux). $0 when the flag is false |
+
+Prometheus, Grafana, and Alertmanager schedule here. `node-exporter` stays a DaemonSet on every node. Loki and Zipkin do not use this node. App pods stay on `petclinic-dev-nodes`.
 
 ### Node IAM Role Policies
 
@@ -963,7 +980,9 @@ git push
 
 ## Observability
 
-**Implementation:** Not started — `terraform/modules/observability/` is an empty placeholder.
+**Implementation:** Partial (ADR-0021). The tainted observability node group is in `terraform/modules/eks/` and wired from `terraform/environments/dev/workload/` with `enable_observability` default **false**. Not applied. Helm values are in `helm-values/observability/` for chart `kube-prometheus-stack` 91.5.0 (dev uses emptyDir; prod file is inventory). Not installed. `terraform/modules/observability/` stays an empty placeholder (no CloudWatch). Live `helm install`, “metrics visible”, and durable EBS wait on a cluster, `enable_observability=true`, and PETPLAT-84. Meaningful scrapes wait on E-16. Loki, FluentBit, and Zipkin (PETPLAT-59, PETPLAT-60) are deferred. Grafana admin password is a Kubernetes Secret at install time, never committed.
+
+Learning subset on that node: Prometheus, Grafana, Alertmanager. Node selector `workload=observability`, toleration `dedicated=observability:NoSchedule`. Before PETPLAT-84, a session may use emptyDir; the PV sizes below stay the contract once the EBS driver exists.
 
 ### Prometheus
 
@@ -993,10 +1012,10 @@ git push
 | Parameter | Value |
 |-----------|-------|
 | Namespace | `monitoring` |
-| Datasources | Prometheus (auto-configured), Loki (auto-configured) |
+| Datasources | Prometheus (auto-configured). Loki when PETPLAT-59 is installed |
 | Storage | PersistentVolume (EBS, 5Gi) |
-| Admin Credentials | K8s Secret |
-| Dashboards | Provisioned via ConfigMap |
+| Admin Credentials | Kubernetes Secret created at install. Never in git |
+| Dashboards | JSON in `helm-values/observability/dashboards/`, provisioned via the chart |
 
 #### Dashboard Set
 
@@ -1010,11 +1029,11 @@ git push
 
 | Alert | Condition | Duration | Severity |
 |-------|-----------|----------|----------|
-| ServiceDown | `up == 0` for any target | 1m | `critical` |
+| ServiceDown | `up{job=~"config-server|discovery-server|api-gateway|customers-service|visits-service|vets-service|genai-service|admin-server"} == 0` | 1m | `critical` |
 | HighErrorRate | `rate(http_server_requests_seconds_count{status=~"5.."}[5m]) / rate(http_server_requests_seconds_count[5m]) > 0.05` | 5m | `warning` |
 | HighLatency | `histogram_quantile(0.95, rate(http_server_requests_seconds_bucket[5m])) > 0.5` | 5m | `warning` |
 | PodRestartLoop | `increase(kube_pod_container_status_restarts_total[15m]) > 3` | 0m | `critical` |
-| HighMemoryUsage | `container_memory_working_set_bytes / container_spec_memory_limit_bytes > 0.8` | 5m | `warning` |
+| HighMemoryUsage | `sum by (namespace, pod, container) (container_memory_working_set_bytes{container!="",container!="POD"}) / sum by (namespace, pod, container) (kube_pod_container_resource_limits{resource="memory",container!=""}) > 0.8` | 5m | `warning` |
 
 ### Alertmanager
 
@@ -1176,6 +1195,7 @@ This is a learning project. Instance choices maximize AWS free tier eligibility.
 |----------|---------|----------|-----------|
 | EKS Control Plane | $73 | $73 | None — unavoidable cost |
 | EC2 Nodes (2x t4g.small) | $0 | $0 | Graviton free trial (750 hrs/mo until Dec 2026) |
+| Observability node (1x t4g.large) | $0 unless `-var=enable_observability=true`, then **$0.0768/h** | not wired | ADR-0021. Apply again without the flag to delete it. Not in the free-trial t4g.small allowance |
 | RDS MySQL (db.t4g.micro) | ~$0 session / **~$0.019/h** OnDemand | same | Free-tier hours are an allowance, not “$0 if left on.” Destroy with workload (ADR-0015). |
 | ALB | ~$0 session / **~$0.027/h** + LCU | same | Created by LBC after Ingress apply; destroy with cluster (ADR-0016). Do not treat 24/7 as $0. |
 | S3 + DynamoDB (state) | ~$0 | ~$0 | SSE-S3 + PAY_PER_REQUEST; no CMK |
@@ -1262,7 +1282,7 @@ Always-on network (VPC, subnets, IGW, S3 gateway) is ~$0. NAT instance is **~$7/
 
 ## Terraform Modules
 
-**Implementation:** Slice 1 done for `vpc` and `nat`. EKS module is implemented and called from **dev/workload** (ADR-0013). ECR is implemented and called from **dev/network** (ADR-0014). RDS is implemented and called from **dev/workload** (ADR-0015). DNS module remains a stub (ADR-0016, deferred). Secrets module is implemented and called from **dev/workload** (ADR-0017). `observability` remains a stub. No `karpenter` module yet.
+**Implementation:** Slice 1 done for `vpc` and `nat`. EKS module is implemented and called from **dev/workload** (ADR-0013). ECR is implemented and called from **dev/network** (ADR-0014). RDS is implemented and called from **dev/workload** (ADR-0015). DNS module remains a stub (ADR-0016, deferred). Secrets module is implemented and called from **dev/workload** (ADR-0017). `observability` remains a stub (ADR-0021; the node group lives in the EKS module). No `karpenter` module yet.
 
 ### Module: `vpc`
 
@@ -1736,7 +1756,7 @@ spec:
 
 ## ADR Index
 
-**Implementation:** Partial — decisions are recorded in this table. Written files: ADR-0001, ADR-0012, ADR-0013, ADR-0014, ADR-0015, ADR-0016, ADR-0017, ADR-0018, ADR-0019, ADR-0020. Remaining rows are index-only until E-15.
+**Implementation:** Partial — decisions are recorded in this table. Written files: ADR-0001, ADR-0012, ADR-0013, ADR-0014, ADR-0015, ADR-0016, ADR-0017, ADR-0018, ADR-0019, ADR-0020, ADR-0021. Remaining rows are index-only until E-15.
 
 Architecture Decision Records are stored in `docs/adr/`.
 
@@ -1762,3 +1782,4 @@ Architecture Decision Records are stored in `docs/adr/`.
 | ADR-0018 | E-8 is namespaces and NetworkPolicies only | Accepted | `k8s/base/namespaces.yaml` + `k8s/base/network-policies/`. API gateway ingress from public subnet CIDRs. PETPLAT-39–44 workloads are Helm (E-16). No Kustomize. No apply. |
 | ADR-0019 | E-9 freezes the env contract for Helm values | Accepted | Replica, HPA, and PDB numbers for `helm-values/{dev,prod}.yaml` (E-16). No `k8s/overlays/`. No apply. PETPLAT-48 deferred. Prod counts do not fit 2× t4g.small. |
 | ADR-0020 | E-10 CI: OIDC in keep network; fork builds; platform updates tags | Accepted | `petclinic-github-actions-role` in `environments/dev/network`. Reference `build-push.yml` copied into an app fork. `update-image-tags.yml` in this repo. No apply. PETPLAT-53 and PETPLAT-54 deferred. |
+| ADR-0021 | E-11 observability on a gated t4g.large node group | Accepted | Prometheus, Grafana, and Alertmanager on `petclinic-{env}-observability` only when `enable_observability=true` (default false). Helm values are in `helm-values/observability/` (chart 91.5.0). Not installed. No CloudWatch module. PETPLAT-59 and PETPLAT-60 deferred. Not applied. |

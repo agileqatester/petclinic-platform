@@ -202,6 +202,57 @@ resource "aws_launch_template" "nodes" {
   }
 }
 
+# Same security posture as the app template. Separate so the EC2 Name tag is
+# petclinic-{env}-eks-observability in the console and Cost Explorer.
+resource "aws_launch_template" "observability" {
+  name_prefix = "${local.name_prefix}-eks-observability-"
+  description = "Observability node group launch template (IMDSv2 hop 1)"
+
+  vpc_security_group_ids = [
+    aws_eks_cluster.this.vpc_config[0].cluster_security_group_id,
+    var.node_sg_id,
+  ]
+
+  metadata_options {
+    http_endpoint               = "enabled"
+    http_tokens                 = "required"
+    http_put_response_hop_limit = 1
+  }
+
+  block_device_mappings {
+    device_name = "/dev/xvda"
+
+    ebs {
+      volume_size           = var.node_disk_size
+      volume_type           = "gp3"
+      encrypted             = true
+      delete_on_termination = true
+    }
+  }
+
+  tag_specifications {
+    resource_type = "instance"
+    tags = merge(var.tags, {
+      Name = "${local.name_prefix}-eks-observability"
+    })
+  }
+
+  tag_specifications {
+    resource_type = "volume"
+    tags = merge(var.tags, {
+      Name = "${local.name_prefix}-eks-observability"
+    })
+  }
+
+  tags = merge(var.tags, {
+    Name = "${local.name_prefix}-eks-observability-lt"
+  })
+
+  lifecycle {
+    create_before_destroy = true
+  }
+}
+
 resource "aws_eks_node_group" "this" {
   cluster_name    = aws_eks_cluster.this.name
   node_group_name = "${local.name_prefix}-nodes"
@@ -234,6 +285,55 @@ resource "aws_eks_node_group" "this" {
 
   tags = merge(var.tags, {
     Name = "${local.name_prefix}-nodes"
+  })
+
+  depends_on = [aws_iam_role_policy_attachment.node]
+}
+
+# Tainted pool for Prometheus, Grafana, and Alertmanager. Own launch template so
+# the instance Name is petclinic-{env}-eks-observability (IMDSv2 hop 1, encrypted gp3).
+# Omitted unless enable_observability is true, so a normal apply pays nothing for this node.
+resource "aws_eks_node_group" "observability" {
+  count = var.enable_observability ? 1 : 0
+
+  cluster_name    = aws_eks_cluster.this.name
+  node_group_name = "${local.name_prefix}-observability"
+  node_role_arn   = aws_iam_role.node.arn
+  subnet_ids      = var.subnet_ids
+  ami_type        = var.node_ami_type
+  capacity_type   = "ON_DEMAND"
+  instance_types  = var.observability_node_instance_types
+  version         = var.cluster_version
+
+  scaling_config {
+    min_size     = 1
+    max_size     = 1
+    desired_size = 1
+  }
+
+  update_config {
+    max_unavailable = 1
+  }
+
+  launch_template {
+    id      = aws_launch_template.observability.id
+    version = aws_launch_template.observability.latest_version
+  }
+
+  labels = {
+    environment  = var.environment
+    "managed-by" = "terraform"
+    workload     = "observability"
+  }
+
+  taint {
+    key    = "dedicated"
+    value  = "observability"
+    effect = "NO_SCHEDULE"
+  }
+
+  tags = merge(var.tags, {
+    Name = "${local.name_prefix}-observability"
   })
 
   depends_on = [aws_iam_role_policy_attachment.node]

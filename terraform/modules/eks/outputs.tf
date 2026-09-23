@@ -29,6 +29,11 @@ output "node_group_name" {
   value       = aws_eks_node_group.this.node_group_name
 }
 
+output "observability_node_group_name" {
+  description = "Tainted observability node group name. Null when enable_observability is false."
+  value       = one(aws_eks_node_group.observability[*].node_group_name)
+}
+
 output "node_role_arn" {
   description = "Node IAM role ARN"
   value       = aws_iam_role.node.arn

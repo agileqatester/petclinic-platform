@@ -1,0 +1,1532 @@
+# Inventory only. Do not helm install this file on the learning cluster.
+# Prod retention is 15d. Disk contract: Prometheus 50Gi, Grafana 5Gi.
+# The dev cluster is 2x t4g.small plus one optional t4g.large.
+
+# Chart: prometheus-community/kube-prometheus-stack 91.5.0
+# Readable copies: alerts/petclinic.yaml and dashboards/*.json (same content as below).
+# The upstream chart cannot load files outside the chart, so the rules and dashboard
+# JSON are embedded here.
+#
+# helm repo add prometheus-community https://prometheus-community.github.io/helm-charts
+# helm template petclinic-obs prometheus-community/kube-prometheus-stack \
+#   --version 91.5.0 -n monitoring -f helm-values/observability/prod.yaml
+#
+# Do not set grafana.adminPassword. The chart creates a Secret at install time.
+
+kubeEtcd:
+  enabled: false
+kubeScheduler:
+  enabled: false
+kubeControllerManager:
+  enabled: false
+
+defaultRules:
+  rules:
+    etcd: false
+    kubeControllerManager: false
+    kubeSchedulerAlerting: false
+    kubeSchedulerRecording: false
+
+alertmanager:
+  alertmanagerSpec:
+    replicas: 1
+    nodeSelector:
+      workload: observability
+    tolerations:
+      - key: dedicated
+        operator: Equal
+        value: observability
+        effect: NoSchedule
+    resources:
+      requests:
+        memory: 64Mi
+      limits:
+        memory: 128Mi
+  config:
+    global:
+      resolve_timeout: 5m
+    route:
+      receiver: "null"
+      group_by: ["alertname", "namespace"]
+      group_wait: 30s
+      group_interval: 5m
+      repeat_interval: 12h
+      routes:
+        - receiver: "null"
+          matchers:
+            - severity = critical
+          group_wait: 0s
+          group_interval: 1m
+        - receiver: "null"
+          matchers:
+            - severity = warning
+          group_interval: 5m
+    receivers:
+      - name: "null"
+
+grafana:
+  adminUser: admin
+  nodeSelector:
+    workload: observability
+  tolerations:
+    - key: dedicated
+      operator: Equal
+      value: observability
+      effect: NoSchedule
+  resources:
+    requests:
+      memory: 128Mi
+    limits:
+      memory: 256Mi
+  persistence:
+    enabled: true
+    size: 5Gi
+
+  sidecar:
+    dashboards:
+      searchNamespace: monitoring
+  dashboards:
+    default:
+      overview:
+        json: |
+          {
+            "uid": "petclinic-overview",
+            "title": "Petclinic overview",
+            "tags": [
+              "petclinic"
+            ],
+            "timezone": "utc",
+            "schemaVersion": 39,
+            "version": 1,
+            "refresh": "30s",
+            "time": {
+              "from": "now-1h",
+              "to": "now"
+            },
+            "editable": true,
+            "panels": [
+              {
+                "id": 1,
+                "type": "stat",
+                "title": "Up",
+                "datasource": {
+                  "type": "prometheus",
+                  "uid": "prometheus"
+                },
+                "gridPos": {
+                  "h": 4,
+                  "w": 24,
+                  "x": 0,
+                  "y": 0
+                },
+                "targets": [
+                  {
+                    "refId": "A",
+                    "expr": "up{job=~\"config-server|discovery-server|api-gateway|customers-service|visits-service|vets-service|genai-service|admin-server\"}",
+                    "legendFormat": "{{job}}"
+                  }
+                ],
+                "fieldConfig": {
+                  "defaults": {
+                    "unit": "short"
+                  },
+                  "overrides": []
+                },
+                "options": {}
+              },
+              {
+                "id": 2,
+                "type": "timeseries",
+                "title": "Request rate",
+                "datasource": {
+                  "type": "prometheus",
+                  "uid": "prometheus"
+                },
+                "gridPos": {
+                  "h": 8,
+                  "w": 12,
+                  "x": 0,
+                  "y": 4
+                },
+                "targets": [
+                  {
+                    "refId": "A",
+                    "expr": "sum by (job) (rate(http_server_requests_seconds_count{job=~\"config-server|discovery-server|api-gateway|customers-service|visits-service|vets-service|genai-service|admin-server\"}[5m]))",
+                    "legendFormat": "{{job}}"
+                  }
+                ],
+                "fieldConfig": {
+                  "defaults": {
+                    "unit": "reqps"
+                  },
+                  "overrides": []
+                },
+                "options": {}
+              },
+              {
+                "id": 3,
+                "type": "timeseries",
+                "title": "Error rate",
+                "datasource": {
+                  "type": "prometheus",
+                  "uid": "prometheus"
+                },
+                "gridPos": {
+                  "h": 8,
+                  "w": 12,
+                  "x": 12,
+                  "y": 4
+                },
+                "targets": [
+                  {
+                    "refId": "A",
+                    "expr": "sum by (job) (rate(http_server_requests_seconds_count{job=~\"config-server|discovery-server|api-gateway|customers-service|visits-service|vets-service|genai-service|admin-server\",status=~\"5..\"}[5m])) / sum by (job) (rate(http_server_requests_seconds_count{job=~\"config-server|discovery-server|api-gateway|customers-service|visits-service|vets-service|genai-service|admin-server\"}[5m]))",
+                    "legendFormat": "{{job}}"
+                  }
+                ],
+                "fieldConfig": {
+                  "defaults": {
+                    "unit": "percentunit"
+                  },
+                  "overrides": []
+                },
+                "options": {}
+              }
+            ]
+          }
+      jvm:
+        json: |
+          {
+            "uid": "petclinic-jvm",
+            "title": "Petclinic JVM",
+            "tags": [
+              "petclinic"
+            ],
+            "timezone": "utc",
+            "schemaVersion": 39,
+            "version": 1,
+            "refresh": "30s",
+            "time": {
+              "from": "now-1h",
+              "to": "now"
+            },
+            "editable": true,
+            "panels": [
+              {
+                "id": 1,
+                "type": "timeseries",
+                "title": "Heap used",
+                "datasource": {
+                  "type": "prometheus",
+                  "uid": "prometheus"
+                },
+                "gridPos": {
+                  "h": 8,
+                  "w": 8,
+                  "x": 0,
+                  "y": 0
+                },
+                "targets": [
+                  {
+                    "refId": "A",
+                    "expr": "sum by (job) (jvm_memory_used_bytes{area=\"heap\"})",
+                    "legendFormat": "{{job}}"
+                  }
+                ],
+                "fieldConfig": {
+                  "defaults": {
+                    "unit": "bytes"
+                  },
+                  "overrides": []
+                },
+                "options": {}
+              },
+              {
+                "id": 2,
+                "type": "timeseries",
+                "title": "GC pause time",
+                "datasource": {
+                  "type": "prometheus",
+                  "uid": "prometheus"
+                },
+                "gridPos": {
+                  "h": 8,
+                  "w": 8,
+                  "x": 8,
+                  "y": 0
+                },
+                "targets": [
+                  {
+                    "refId": "A",
+                    "expr": "sum by (job) (rate(jvm_gc_pause_seconds_sum[5m]))",
+                    "legendFormat": "{{job}}"
+                  }
+                ],
+                "fieldConfig": {
+                  "defaults": {
+                    "unit": "s"
+                  },
+                  "overrides": []
+                },
+                "options": {}
+              },
+              {
+                "id": 3,
+                "type": "timeseries",
+                "title": "Live threads",
+                "datasource": {
+                  "type": "prometheus",
+                  "uid": "prometheus"
+                },
+                "gridPos": {
+                  "h": 8,
+                  "w": 8,
+                  "x": 16,
+                  "y": 0
+                },
+                "targets": [
+                  {
+                    "refId": "A",
+                    "expr": "jvm_threads_live_threads",
+                    "legendFormat": "{{job}}"
+                  }
+                ],
+                "fieldConfig": {
+                  "defaults": {
+                    "unit": "short"
+                  },
+                  "overrides": []
+                },
+                "options": {}
+              }
+            ]
+          }
+      config-server:
+        json: |
+          {
+            "uid": "petclinic-config-server",
+            "title": "Petclinic config-server",
+            "tags": [
+              "petclinic"
+            ],
+            "timezone": "utc",
+            "schemaVersion": 39,
+            "version": 1,
+            "refresh": "30s",
+            "time": {
+              "from": "now-1h",
+              "to": "now"
+            },
+            "editable": true,
+            "panels": [
+              {
+                "id": 1,
+                "type": "timeseries",
+                "title": "Request rate",
+                "datasource": {
+                  "type": "prometheus",
+                  "uid": "prometheus"
+                },
+                "gridPos": {
+                  "h": 8,
+                  "w": 12,
+                  "x": 0,
+                  "y": 0
+                },
+                "targets": [
+                  {
+                    "refId": "A",
+                    "expr": "sum(rate(http_server_requests_seconds_count{job=\"config-server\"}[5m]))",
+                    "legendFormat": "{{job}}"
+                  }
+                ],
+                "fieldConfig": {
+                  "defaults": {
+                    "unit": "reqps"
+                  },
+                  "overrides": []
+                },
+                "options": {}
+              },
+              {
+                "id": 2,
+                "type": "timeseries",
+                "title": "Error rate",
+                "datasource": {
+                  "type": "prometheus",
+                  "uid": "prometheus"
+                },
+                "gridPos": {
+                  "h": 8,
+                  "w": 12,
+                  "x": 12,
+                  "y": 0
+                },
+                "targets": [
+                  {
+                    "refId": "A",
+                    "expr": "sum(rate(http_server_requests_seconds_count{job=\"config-server\",status=~\"5..\"}[5m])) / sum(rate(http_server_requests_seconds_count{job=\"config-server\"}[5m]))",
+                    "legendFormat": "{{job}}"
+                  }
+                ],
+                "fieldConfig": {
+                  "defaults": {
+                    "unit": "percentunit"
+                  },
+                  "overrides": []
+                },
+                "options": {}
+              },
+              {
+                "id": 3,
+                "type": "timeseries",
+                "title": "p95 latency",
+                "datasource": {
+                  "type": "prometheus",
+                  "uid": "prometheus"
+                },
+                "gridPos": {
+                  "h": 8,
+                  "w": 12,
+                  "x": 0,
+                  "y": 8
+                },
+                "targets": [
+                  {
+                    "refId": "A",
+                    "expr": "histogram_quantile(0.95, sum by (le) (rate(http_server_requests_seconds_bucket{job=\"config-server\"}[5m])))",
+                    "legendFormat": "{{job}}"
+                  }
+                ],
+                "fieldConfig": {
+                  "defaults": {
+                    "unit": "s"
+                  },
+                  "overrides": []
+                },
+                "options": {}
+              },
+              {
+                "id": 4,
+                "type": "timeseries",
+                "title": "p99 latency",
+                "datasource": {
+                  "type": "prometheus",
+                  "uid": "prometheus"
+                },
+                "gridPos": {
+                  "h": 8,
+                  "w": 12,
+                  "x": 12,
+                  "y": 8
+                },
+                "targets": [
+                  {
+                    "refId": "A",
+                    "expr": "histogram_quantile(0.99, sum by (le) (rate(http_server_requests_seconds_bucket{job=\"config-server\"}[5m])))",
+                    "legendFormat": "{{job}}"
+                  }
+                ],
+                "fieldConfig": {
+                  "defaults": {
+                    "unit": "s"
+                  },
+                  "overrides": []
+                },
+                "options": {}
+              }
+            ]
+          }
+      discovery-server:
+        json: |
+          {
+            "uid": "petclinic-discovery-server",
+            "title": "Petclinic discovery-server",
+            "tags": [
+              "petclinic"
+            ],
+            "timezone": "utc",
+            "schemaVersion": 39,
+            "version": 1,
+            "refresh": "30s",
+            "time": {
+              "from": "now-1h",
+              "to": "now"
+            },
+            "editable": true,
+            "panels": [
+              {
+                "id": 1,
+                "type": "timeseries",
+                "title": "Request rate",
+                "datasource": {
+                  "type": "prometheus",
+                  "uid": "prometheus"
+                },
+                "gridPos": {
+                  "h": 8,
+                  "w": 12,
+                  "x": 0,
+                  "y": 0
+                },
+                "targets": [
+                  {
+                    "refId": "A",
+                    "expr": "sum(rate(http_server_requests_seconds_count{job=\"discovery-server\"}[5m]))",
+                    "legendFormat": "{{job}}"
+                  }
+                ],
+                "fieldConfig": {
+                  "defaults": {
+                    "unit": "reqps"
+                  },
+                  "overrides": []
+                },
+                "options": {}
+              },
+              {
+                "id": 2,
+                "type": "timeseries",
+                "title": "Error rate",
+                "datasource": {
+                  "type": "prometheus",
+                  "uid": "prometheus"
+                },
+                "gridPos": {
+                  "h": 8,
+                  "w": 12,
+                  "x": 12,
+                  "y": 0
+                },
+                "targets": [
+                  {
+                    "refId": "A",
+                    "expr": "sum(rate(http_server_requests_seconds_count{job=\"discovery-server\",status=~\"5..\"}[5m])) / sum(rate(http_server_requests_seconds_count{job=\"discovery-server\"}[5m]))",
+                    "legendFormat": "{{job}}"
+                  }
+                ],
+                "fieldConfig": {
+                  "defaults": {
+                    "unit": "percentunit"
+                  },
+                  "overrides": []
+                },
+                "options": {}
+              },
+              {
+                "id": 3,
+                "type": "timeseries",
+                "title": "p95 latency",
+                "datasource": {
+                  "type": "prometheus",
+                  "uid": "prometheus"
+                },
+                "gridPos": {
+                  "h": 8,
+                  "w": 12,
+                  "x": 0,
+                  "y": 8
+                },
+                "targets": [
+                  {
+                    "refId": "A",
+                    "expr": "histogram_quantile(0.95, sum by (le) (rate(http_server_requests_seconds_bucket{job=\"discovery-server\"}[5m])))",
+                    "legendFormat": "{{job}}"
+                  }
+                ],
+                "fieldConfig": {
+                  "defaults": {
+                    "unit": "s"
+                  },
+                  "overrides": []
+                },
+                "options": {}
+              },
+              {
+                "id": 4,
+                "type": "timeseries",
+                "title": "p99 latency",
+                "datasource": {
+                  "type": "prometheus",
+                  "uid": "prometheus"
+                },
+                "gridPos": {
+                  "h": 8,
+                  "w": 12,
+                  "x": 12,
+                  "y": 8
+                },
+                "targets": [
+                  {
+                    "refId": "A",
+                    "expr": "histogram_quantile(0.99, sum by (le) (rate(http_server_requests_seconds_bucket{job=\"discovery-server\"}[5m])))",
+                    "legendFormat": "{{job}}"
+                  }
+                ],
+                "fieldConfig": {
+                  "defaults": {
+                    "unit": "s"
+                  },
+                  "overrides": []
+                },
+                "options": {}
+              }
+            ]
+          }
+      api-gateway:
+        json: |
+          {
+            "uid": "petclinic-api-gateway",
+            "title": "Petclinic api-gateway",
+            "tags": [
+              "petclinic"
+            ],
+            "timezone": "utc",
+            "schemaVersion": 39,
+            "version": 1,
+            "refresh": "30s",
+            "time": {
+              "from": "now-1h",
+              "to": "now"
+            },
+            "editable": true,
+            "panels": [
+              {
+                "id": 1,
+                "type": "timeseries",
+                "title": "Request rate",
+                "datasource": {
+                  "type": "prometheus",
+                  "uid": "prometheus"
+                },
+                "gridPos": {
+                  "h": 8,
+                  "w": 12,
+                  "x": 0,
+                  "y": 0
+                },
+                "targets": [
+                  {
+                    "refId": "A",
+                    "expr": "sum(rate(http_server_requests_seconds_count{job=\"api-gateway\"}[5m]))",
+                    "legendFormat": "{{job}}"
+                  }
+                ],
+                "fieldConfig": {
+                  "defaults": {
+                    "unit": "reqps"
+                  },
+                  "overrides": []
+                },
+                "options": {}
+              },
+              {
+                "id": 2,
+                "type": "timeseries",
+                "title": "Error rate",
+                "datasource": {
+                  "type": "prometheus",
+                  "uid": "prometheus"
+                },
+                "gridPos": {
+                  "h": 8,
+                  "w": 12,
+                  "x": 12,
+                  "y": 0
+                },
+                "targets": [
+                  {
+                    "refId": "A",
+                    "expr": "sum(rate(http_server_requests_seconds_count{job=\"api-gateway\",status=~\"5..\"}[5m])) / sum(rate(http_server_requests_seconds_count{job=\"api-gateway\"}[5m]))",
+                    "legendFormat": "{{job}}"
+                  }
+                ],
+                "fieldConfig": {
+                  "defaults": {
+                    "unit": "percentunit"
+                  },
+                  "overrides": []
+                },
+                "options": {}
+              },
+              {
+                "id": 3,
+                "type": "timeseries",
+                "title": "p95 latency",
+                "datasource": {
+                  "type": "prometheus",
+                  "uid": "prometheus"
+                },
+                "gridPos": {
+                  "h": 8,
+                  "w": 12,
+                  "x": 0,
+                  "y": 8
+                },
+                "targets": [
+                  {
+                    "refId": "A",
+                    "expr": "histogram_quantile(0.95, sum by (le) (rate(http_server_requests_seconds_bucket{job=\"api-gateway\"}[5m])))",
+                    "legendFormat": "{{job}}"
+                  }
+                ],
+                "fieldConfig": {
+                  "defaults": {
+                    "unit": "s"
+                  },
+                  "overrides": []
+                },
+                "options": {}
+              },
+              {
+                "id": 4,
+                "type": "timeseries",
+                "title": "p99 latency",
+                "datasource": {
+                  "type": "prometheus",
+                  "uid": "prometheus"
+                },
+                "gridPos": {
+                  "h": 8,
+                  "w": 12,
+                  "x": 12,
+                  "y": 8
+                },
+                "targets": [
+                  {
+                    "refId": "A",
+                    "expr": "histogram_quantile(0.99, sum by (le) (rate(http_server_requests_seconds_bucket{job=\"api-gateway\"}[5m])))",
+                    "legendFormat": "{{job}}"
+                  }
+                ],
+                "fieldConfig": {
+                  "defaults": {
+                    "unit": "s"
+                  },
+                  "overrides": []
+                },
+                "options": {}
+              }
+            ]
+          }
+      customers-service:
+        json: |
+          {
+            "uid": "petclinic-customers-service",
+            "title": "Petclinic customers-service",
+            "tags": [
+              "petclinic"
+            ],
+            "timezone": "utc",
+            "schemaVersion": 39,
+            "version": 1,
+            "refresh": "30s",
+            "time": {
+              "from": "now-1h",
+              "to": "now"
+            },
+            "editable": true,
+            "panels": [
+              {
+                "id": 1,
+                "type": "timeseries",
+                "title": "Request rate",
+                "datasource": {
+                  "type": "prometheus",
+                  "uid": "prometheus"
+                },
+                "gridPos": {
+                  "h": 8,
+                  "w": 12,
+                  "x": 0,
+                  "y": 0
+                },
+                "targets": [
+                  {
+                    "refId": "A",
+                    "expr": "sum(rate(http_server_requests_seconds_count{job=\"customers-service\"}[5m]))",
+                    "legendFormat": "{{job}}"
+                  }
+                ],
+                "fieldConfig": {
+                  "defaults": {
+                    "unit": "reqps"
+                  },
+                  "overrides": []
+                },
+                "options": {}
+              },
+              {
+                "id": 2,
+                "type": "timeseries",
+                "title": "Error rate",
+                "datasource": {
+                  "type": "prometheus",
+                  "uid": "prometheus"
+                },
+                "gridPos": {
+                  "h": 8,
+                  "w": 12,
+                  "x": 12,
+                  "y": 0
+                },
+                "targets": [
+                  {
+                    "refId": "A",
+                    "expr": "sum(rate(http_server_requests_seconds_count{job=\"customers-service\",status=~\"5..\"}[5m])) / sum(rate(http_server_requests_seconds_count{job=\"customers-service\"}[5m]))",
+                    "legendFormat": "{{job}}"
+                  }
+                ],
+                "fieldConfig": {
+                  "defaults": {
+                    "unit": "percentunit"
+                  },
+                  "overrides": []
+                },
+                "options": {}
+              },
+              {
+                "id": 3,
+                "type": "timeseries",
+                "title": "p95 latency",
+                "datasource": {
+                  "type": "prometheus",
+                  "uid": "prometheus"
+                },
+                "gridPos": {
+                  "h": 8,
+                  "w": 12,
+                  "x": 0,
+                  "y": 8
+                },
+                "targets": [
+                  {
+                    "refId": "A",
+                    "expr": "histogram_quantile(0.95, sum by (le) (rate(http_server_requests_seconds_bucket{job=\"customers-service\"}[5m])))",
+                    "legendFormat": "{{job}}"
+                  }
+                ],
+                "fieldConfig": {
+                  "defaults": {
+                    "unit": "s"
+                  },
+                  "overrides": []
+                },
+                "options": {}
+              },
+              {
+                "id": 4,
+                "type": "timeseries",
+                "title": "p99 latency",
+                "datasource": {
+                  "type": "prometheus",
+                  "uid": "prometheus"
+                },
+                "gridPos": {
+                  "h": 8,
+                  "w": 12,
+                  "x": 12,
+                  "y": 8
+                },
+                "targets": [
+                  {
+                    "refId": "A",
+                    "expr": "histogram_quantile(0.99, sum by (le) (rate(http_server_requests_seconds_bucket{job=\"customers-service\"}[5m])))",
+                    "legendFormat": "{{job}}"
+                  }
+                ],
+                "fieldConfig": {
+                  "defaults": {
+                    "unit": "s"
+                  },
+                  "overrides": []
+                },
+                "options": {}
+              }
+            ]
+          }
+      visits-service:
+        json: |
+          {
+            "uid": "petclinic-visits-service",
+            "title": "Petclinic visits-service",
+            "tags": [
+              "petclinic"
+            ],
+            "timezone": "utc",
+            "schemaVersion": 39,
+            "version": 1,
+            "refresh": "30s",
+            "time": {
+              "from": "now-1h",
+              "to": "now"
+            },
+            "editable": true,
+            "panels": [
+              {
+                "id": 1,
+                "type": "timeseries",
+                "title": "Request rate",
+                "datasource": {
+                  "type": "prometheus",
+                  "uid": "prometheus"
+                },
+                "gridPos": {
+                  "h": 8,
+                  "w": 12,
+                  "x": 0,
+                  "y": 0
+                },
+                "targets": [
+                  {
+                    "refId": "A",
+                    "expr": "sum(rate(http_server_requests_seconds_count{job=\"visits-service\"}[5m]))",
+                    "legendFormat": "{{job}}"
+                  }
+                ],
+                "fieldConfig": {
+                  "defaults": {
+                    "unit": "reqps"
+                  },
+                  "overrides": []
+                },
+                "options": {}
+              },
+              {
+                "id": 2,
+                "type": "timeseries",
+                "title": "Error rate",
+                "datasource": {
+                  "type": "prometheus",
+                  "uid": "prometheus"
+                },
+                "gridPos": {
+                  "h": 8,
+                  "w": 12,
+                  "x": 12,
+                  "y": 0
+                },
+                "targets": [
+                  {
+                    "refId": "A",
+                    "expr": "sum(rate(http_server_requests_seconds_count{job=\"visits-service\",status=~\"5..\"}[5m])) / sum(rate(http_server_requests_seconds_count{job=\"visits-service\"}[5m]))",
+                    "legendFormat": "{{job}}"
+                  }
+                ],
+                "fieldConfig": {
+                  "defaults": {
+                    "unit": "percentunit"
+                  },
+                  "overrides": []
+                },
+                "options": {}
+              },
+              {
+                "id": 3,
+                "type": "timeseries",
+                "title": "p95 latency",
+                "datasource": {
+                  "type": "prometheus",
+                  "uid": "prometheus"
+                },
+                "gridPos": {
+                  "h": 8,
+                  "w": 12,
+                  "x": 0,
+                  "y": 8
+                },
+                "targets": [
+                  {
+                    "refId": "A",
+                    "expr": "histogram_quantile(0.95, sum by (le) (rate(http_server_requests_seconds_bucket{job=\"visits-service\"}[5m])))",
+                    "legendFormat": "{{job}}"
+                  }
+                ],
+                "fieldConfig": {
+                  "defaults": {
+                    "unit": "s"
+                  },
+                  "overrides": []
+                },
+                "options": {}
+              },
+              {
+                "id": 4,
+                "type": "timeseries",
+                "title": "p99 latency",
+                "datasource": {
+                  "type": "prometheus",
+                  "uid": "prometheus"
+                },
+                "gridPos": {
+                  "h": 8,
+                  "w": 12,
+                  "x": 12,
+                  "y": 8
+                },
+                "targets": [
+                  {
+                    "refId": "A",
+                    "expr": "histogram_quantile(0.99, sum by (le) (rate(http_server_requests_seconds_bucket{job=\"visits-service\"}[5m])))",
+                    "legendFormat": "{{job}}"
+                  }
+                ],
+                "fieldConfig": {
+                  "defaults": {
+                    "unit": "s"
+                  },
+                  "overrides": []
+                },
+                "options": {}
+              }
+            ]
+          }
+      vets-service:
+        json: |
+          {
+            "uid": "petclinic-vets-service",
+            "title": "Petclinic vets-service",
+            "tags": [
+              "petclinic"
+            ],
+            "timezone": "utc",
+            "schemaVersion": 39,
+            "version": 1,
+            "refresh": "30s",
+            "time": {
+              "from": "now-1h",
+              "to": "now"
+            },
+            "editable": true,
+            "panels": [
+              {
+                "id": 1,
+                "type": "timeseries",
+                "title": "Request rate",
+                "datasource": {
+                  "type": "prometheus",
+                  "uid": "prometheus"
+                },
+                "gridPos": {
+                  "h": 8,
+                  "w": 12,
+                  "x": 0,
+                  "y": 0
+                },
+                "targets": [
+                  {
+                    "refId": "A",
+                    "expr": "sum(rate(http_server_requests_seconds_count{job=\"vets-service\"}[5m]))",
+                    "legendFormat": "{{job}}"
+                  }
+                ],
+                "fieldConfig": {
+                  "defaults": {
+                    "unit": "reqps"
+                  },
+                  "overrides": []
+                },
+                "options": {}
+              },
+              {
+                "id": 2,
+                "type": "timeseries",
+                "title": "Error rate",
+                "datasource": {
+                  "type": "prometheus",
+                  "uid": "prometheus"
+                },
+                "gridPos": {
+                  "h": 8,
+                  "w": 12,
+                  "x": 12,
+                  "y": 0
+                },
+                "targets": [
+                  {
+                    "refId": "A",
+                    "expr": "sum(rate(http_server_requests_seconds_count{job=\"vets-service\",status=~\"5..\"}[5m])) / sum(rate(http_server_requests_seconds_count{job=\"vets-service\"}[5m]))",
+                    "legendFormat": "{{job}}"
+                  }
+                ],
+                "fieldConfig": {
+                  "defaults": {
+                    "unit": "percentunit"
+                  },
+                  "overrides": []
+                },
+                "options": {}
+              },
+              {
+                "id": 3,
+                "type": "timeseries",
+                "title": "p95 latency",
+                "datasource": {
+                  "type": "prometheus",
+                  "uid": "prometheus"
+                },
+                "gridPos": {
+                  "h": 8,
+                  "w": 12,
+                  "x": 0,
+                  "y": 8
+                },
+                "targets": [
+                  {
+                    "refId": "A",
+                    "expr": "histogram_quantile(0.95, sum by (le) (rate(http_server_requests_seconds_bucket{job=\"vets-service\"}[5m])))",
+                    "legendFormat": "{{job}}"
+                  }
+                ],
+                "fieldConfig": {
+                  "defaults": {
+                    "unit": "s"
+                  },
+                  "overrides": []
+                },
+                "options": {}
+              },
+              {
+                "id": 4,
+                "type": "timeseries",
+                "title": "p99 latency",
+                "datasource": {
+                  "type": "prometheus",
+                  "uid": "prometheus"
+                },
+                "gridPos": {
+                  "h": 8,
+                  "w": 12,
+                  "x": 12,
+                  "y": 8
+                },
+                "targets": [
+                  {
+                    "refId": "A",
+                    "expr": "histogram_quantile(0.99, sum by (le) (rate(http_server_requests_seconds_bucket{job=\"vets-service\"}[5m])))",
+                    "legendFormat": "{{job}}"
+                  }
+                ],
+                "fieldConfig": {
+                  "defaults": {
+                    "unit": "s"
+                  },
+                  "overrides": []
+                },
+                "options": {}
+              }
+            ]
+          }
+      genai-service:
+        json: |
+          {
+            "uid": "petclinic-genai-service",
+            "title": "Petclinic genai-service",
+            "tags": [
+              "petclinic"
+            ],
+            "timezone": "utc",
+            "schemaVersion": 39,
+            "version": 1,
+            "refresh": "30s",
+            "time": {
+              "from": "now-1h",
+              "to": "now"
+            },
+            "editable": true,
+            "panels": [
+              {
+                "id": 1,
+                "type": "timeseries",
+                "title": "Request rate",
+                "datasource": {
+                  "type": "prometheus",
+                  "uid": "prometheus"
+                },
+                "gridPos": {
+                  "h": 8,
+                  "w": 12,
+                  "x": 0,
+                  "y": 0
+                },
+                "targets": [
+                  {
+                    "refId": "A",
+                    "expr": "sum(rate(http_server_requests_seconds_count{job=\"genai-service\"}[5m]))",
+                    "legendFormat": "{{job}}"
+                  }
+                ],
+                "fieldConfig": {
+                  "defaults": {
+                    "unit": "reqps"
+                  },
+                  "overrides": []
+                },
+                "options": {}
+              },
+              {
+                "id": 2,
+                "type": "timeseries",
+                "title": "Error rate",
+                "datasource": {
+                  "type": "prometheus",
+                  "uid": "prometheus"
+                },
+                "gridPos": {
+                  "h": 8,
+                  "w": 12,
+                  "x": 12,
+                  "y": 0
+                },
+                "targets": [
+                  {
+                    "refId": "A",
+                    "expr": "sum(rate(http_server_requests_seconds_count{job=\"genai-service\",status=~\"5..\"}[5m])) / sum(rate(http_server_requests_seconds_count{job=\"genai-service\"}[5m]))",
+                    "legendFormat": "{{job}}"
+                  }
+                ],
+                "fieldConfig": {
+                  "defaults": {
+                    "unit": "percentunit"
+                  },
+                  "overrides": []
+                },
+                "options": {}
+              },
+              {
+                "id": 3,
+                "type": "timeseries",
+                "title": "p95 latency",
+                "datasource": {
+                  "type": "prometheus",
+                  "uid": "prometheus"
+                },
+                "gridPos": {
+                  "h": 8,
+                  "w": 12,
+                  "x": 0,
+                  "y": 8
+                },
+                "targets": [
+                  {
+                    "refId": "A",
+                    "expr": "histogram_quantile(0.95, sum by (le) (rate(http_server_requests_seconds_bucket{job=\"genai-service\"}[5m])))",
+                    "legendFormat": "{{job}}"
+                  }
+                ],
+                "fieldConfig": {
+                  "defaults": {
+                    "unit": "s"
+                  },
+                  "overrides": []
+                },
+                "options": {}
+              },
+              {
+                "id": 4,
+                "type": "timeseries",
+                "title": "p99 latency",
+                "datasource": {
+                  "type": "prometheus",
+                  "uid": "prometheus"
+                },
+                "gridPos": {
+                  "h": 8,
+                  "w": 12,
+                  "x": 12,
+                  "y": 8
+                },
+                "targets": [
+                  {
+                    "refId": "A",
+                    "expr": "histogram_quantile(0.99, sum by (le) (rate(http_server_requests_seconds_bucket{job=\"genai-service\"}[5m])))",
+                    "legendFormat": "{{job}}"
+                  }
+                ],
+                "fieldConfig": {
+                  "defaults": {
+                    "unit": "s"
+                  },
+                  "overrides": []
+                },
+                "options": {}
+              }
+            ]
+          }
+      admin-server:
+        json: |
+          {
+            "uid": "petclinic-admin-server",
+            "title": "Petclinic admin-server",
+            "tags": [
+              "petclinic"
+            ],
+            "timezone": "utc",
+            "schemaVersion": 39,
+            "version": 1,
+            "refresh": "30s",
+            "time": {
+              "from": "now-1h",
+              "to": "now"
+            },
+            "editable": true,
+            "panels": [
+              {
+                "id": 1,
+                "type": "timeseries",
+                "title": "Request rate",
+                "datasource": {
+                  "type": "prometheus",
+                  "uid": "prometheus"
+                },
+                "gridPos": {
+                  "h": 8,
+                  "w": 12,
+                  "x": 0,
+                  "y": 0
+                },
+                "targets": [
+                  {
+                    "refId": "A",
+                    "expr": "sum(rate(http_server_requests_seconds_count{job=\"admin-server\"}[5m]))",
+                    "legendFormat": "{{job}}"
+                  }
+                ],
+                "fieldConfig": {
+                  "defaults": {
+                    "unit": "reqps"
+                  },
+                  "overrides": []
+                },
+                "options": {}
+              },
+              {
+                "id": 2,
+                "type": "timeseries",
+                "title": "Error rate",
+                "datasource": {
+                  "type": "prometheus",
+                  "uid": "prometheus"
+                },
+                "gridPos": {
+                  "h": 8,
+                  "w": 12,
+                  "x": 12,
+                  "y": 0
+                },
+                "targets": [
+                  {
+                    "refId": "A",
+                    "expr": "sum(rate(http_server_requests_seconds_count{job=\"admin-server\",status=~\"5..\"}[5m])) / sum(rate(http_server_requests_seconds_count{job=\"admin-server\"}[5m]))",
+                    "legendFormat": "{{job}}"
+                  }
+                ],
+                "fieldConfig": {
+                  "defaults": {
+                    "unit": "percentunit"
+                  },
+                  "overrides": []
+                },
+                "options": {}
+              },
+              {
+                "id": 3,
+                "type": "timeseries",
+                "title": "p95 latency",
+                "datasource": {
+                  "type": "prometheus",
+                  "uid": "prometheus"
+                },
+                "gridPos": {
+                  "h": 8,
+                  "w": 12,
+                  "x": 0,
+                  "y": 8
+                },
+                "targets": [
+                  {
+                    "refId": "A",
+                    "expr": "histogram_quantile(0.95, sum by (le) (rate(http_server_requests_seconds_bucket{job=\"admin-server\"}[5m])))",
+                    "legendFormat": "{{job}}"
+                  }
+                ],
+                "fieldConfig": {
+                  "defaults": {
+                    "unit": "s"
+                  },
+                  "overrides": []
+                },
+                "options": {}
+              },
+              {
+                "id": 4,
+                "type": "timeseries",
+                "title": "p99 latency",
+                "datasource": {
+                  "type": "prometheus",
+                  "uid": "prometheus"
+                },
+                "gridPos": {
+                  "h": 8,
+                  "w": 12,
+                  "x": 12,
+                  "y": 8
+                },
+                "targets": [
+                  {
+                    "refId": "A",
+                    "expr": "histogram_quantile(0.99, sum by (le) (rate(http_server_requests_seconds_bucket{job=\"admin-server\"}[5m])))",
+                    "legendFormat": "{{job}}"
+                  }
+                ],
+                "fieldConfig": {
+                  "defaults": {
+                    "unit": "s"
+                  },
+                  "overrides": []
+                },
+                "options": {}
+              }
+            ]
+          }
+
+prometheusOperator:
+  nodeSelector:
+    workload: observability
+  tolerations:
+    - key: dedicated
+      operator: Equal
+      value: observability
+      effect: NoSchedule
+  resources:
+    requests:
+      memory: 64Mi
+    limits:
+      memory: 128Mi
+
+kube-state-metrics:
+  nodeSelector:
+    workload: observability
+  tolerations:
+    - key: dedicated
+      operator: Equal
+      value: observability
+      effect: NoSchedule
+  resources:
+    requests:
+      memory: 128Mi
+    limits:
+      memory: 256Mi
+
+# node-exporter is a DaemonSet on every node. The subchart already tolerates
+# NoSchedule, so it can run on the observability taint. Do not set a nodeSelector.
+
+prometheus:
+  prometheusSpec:
+    replicas: 1
+    scrapeInterval: 15s
+    evaluationInterval: 15s
+    retention: 15d
+    nodeSelector:
+      workload: observability
+    tolerations:
+      - key: dedicated
+        operator: Equal
+        value: observability
+        effect: NoSchedule
+    resources:
+      requests:
+        memory: 1Gi
+      limits:
+        memory: 2Gi
+    storageSpec:
+      volumeClaimTemplate:
+        spec:
+          accessModes: ["ReadWriteOnce"]
+          resources:
+            requests:
+              storage: 50Gi
+
+    additionalScrapeConfigs:
+    - job_name: config-server
+      metrics_path: /actuator/prometheus
+      static_configs:
+        - targets:
+            - config-server.petclinic-prod:8888
+    - job_name: discovery-server
+      metrics_path: /actuator/prometheus
+      static_configs:
+        - targets:
+            - discovery-server.petclinic-prod:8761
+    - job_name: api-gateway
+      metrics_path: /actuator/prometheus
+      static_configs:
+        - targets:
+            - api-gateway.petclinic-prod:8080
+    - job_name: customers-service
+      metrics_path: /actuator/prometheus
+      static_configs:
+        - targets:
+            - customers-service.petclinic-prod:8081
+    - job_name: visits-service
+      metrics_path: /actuator/prometheus
+      static_configs:
+        - targets:
+            - visits-service.petclinic-prod:8082
+    - job_name: vets-service
+      metrics_path: /actuator/prometheus
+      static_configs:
+        - targets:
+            - vets-service.petclinic-prod:8083
+    - job_name: genai-service
+      metrics_path: /actuator/prometheus
+      static_configs:
+        - targets:
+            - genai-service.petclinic-prod:8084
+    - job_name: admin-server
+      metrics_path: /actuator/prometheus
+      static_configs:
+        - targets:
+            - admin-server.petclinic-prod:9090
+
+additionalPrometheusRulesMap:
+  petclinic:
+    groups:
+      - name: petclinic
+        rules:
+          - alert: ServiceDown
+            expr: 'up{job=~"config-server|discovery-server|api-gateway|customers-service|visits-service|vets-service|genai-service|admin-server"} == 0'
+            for: 1m
+            labels:
+              severity: critical
+            annotations:
+              summary: '{{ $labels.job }} is down'
+          - alert: HighErrorRate
+            expr: 'rate(http_server_requests_seconds_count{status=~"5.."}[5m]) / rate(http_server_requests_seconds_count[5m]) > 0.05'
+            for: 5m
+            labels:
+              severity: warning
+            annotations:
+              summary: '{{ $labels.job }} 5xx error rate is above 5%'
+          - alert: HighLatency
+            expr: 'histogram_quantile(0.95, rate(http_server_requests_seconds_bucket[5m])) > 0.5'
+            for: 5m
+            labels:
+              severity: warning
+            annotations:
+              summary: '{{ $labels.job }} p95 latency is above 500ms'
+          - alert: PodRestartLoop
+            expr: increase(kube_pod_container_status_restarts_total[15m]) > 3
+            for: 0m
+            labels:
+              severity: critical
+            annotations:
+              summary: '{{ $labels.namespace }}/{{ $labels.pod }} restarted more than 3 times in 15m'
+          - alert: HighMemoryUsage
+            expr: 'sum by (namespace, pod, container) (container_memory_working_set_bytes{container!="",container!="POD"}) / sum by (namespace, pod, container) (kube_pod_container_resource_limits{resource="memory",container!=""}) > 0.8'
+            for: 5m
+            labels:
+              severity: warning
+            annotations:
+              summary: '{{ $labels.namespace }}/{{ $labels.pod }} memory is above 80% of its limit'
+

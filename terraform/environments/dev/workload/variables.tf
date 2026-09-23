@@ -47,6 +47,12 @@ variable "my_ip" {
   }
 }
 
+variable "enable_observability" {
+  description = "Create the tainted t4g.large for Prometheus. Default false. Pass -var=enable_observability=true only for a short observability session; the next apply without it removes that node."
+  type        = bool
+  default     = false
+}
+
 variable "openai_api_key" {
   description = "OpenAI API key. Empty skips petclinic/dev/openai-api-key (ADR-0017). Pass via -var or TF_VAR_openai_api_key; never put in tfvars."
   type        = string

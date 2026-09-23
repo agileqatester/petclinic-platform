@@ -1,0 +1,47 @@
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: petclinic
+  namespace: monitoring
+  labels:
+    app.kubernetes.io/name: petclinic
+    app.kubernetes.io/part-of: petclinic
+spec:
+  groups:
+    - name: petclinic
+      rules:
+        - alert: ServiceDown
+          expr: 'up{job=~"config-server|discovery-server|api-gateway|customers-service|visits-service|vets-service|genai-service|admin-server"} == 0'
+          for: 1m
+          labels:
+            severity: critical
+          annotations:
+            summary: '{{ $labels.job }} is down'
+        - alert: HighErrorRate
+          expr: 'rate(http_server_requests_seconds_count{status=~"5.."}[5m]) / rate(http_server_requests_seconds_count[5m]) > 0.05'
+          for: 5m
+          labels:
+            severity: warning
+          annotations:
+            summary: '{{ $labels.job }} 5xx error rate is above 5%'
+        - alert: HighLatency
+          expr: 'histogram_quantile(0.95, rate(http_server_requests_seconds_bucket[5m])) > 0.5'
+          for: 5m
+          labels:
+            severity: warning
+          annotations:
+            summary: '{{ $labels.job }} p95 latency is above 500ms'
+        - alert: PodRestartLoop
+          expr: increase(kube_pod_container_status_restarts_total[15m]) > 3
+          for: 0m
+          labels:
+            severity: critical
+          annotations:
+            summary: '{{ $labels.namespace }}/{{ $labels.pod }} restarted more than 3 times in 15m'
+        - alert: HighMemoryUsage
+          expr: 'sum by (namespace, pod, container) (container_memory_working_set_bytes{container!="",container!="POD"}) / sum by (namespace, pod, container) (kube_pod_container_resource_limits{resource="memory",container!=""}) > 0.8'
+          for: 5m
+          labels:
+            severity: warning
+          annotations:
+            summary: '{{ $labels.namespace }}/{{ $labels.pod }} memory is above 80% of its limit'
