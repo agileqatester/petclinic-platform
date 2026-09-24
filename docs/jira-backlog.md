@@ -3273,12 +3273,12 @@ Create ArgoCD Application CRDs for all 8 Petclinic services in the dev environme
 
 **Acceptance Criteria:**
 
-- [ ] ArgoCD Application manifests at `k8s/argocd/applications/dev/` (one per service)
-- [ ] Each Application points to the Helm chart at `helm/petclinic-service/`
-- [ ] Each Application uses values files: `helm-values/{service}.yaml` + `helm-values/dev.yaml`
-- [ ] Sync policy: `automated` with `selfHeal: true` and `prune: true`
-- [ ] Destination namespace: `petclinic-dev`
-- [ ] Source repo: petclinic-platform Git URL
+- [x] ArgoCD Application manifests at `k8s/argocd/applications/dev/` (one per service)
+- [x] Each Application points to the Helm chart at `helm/petclinic-service/`
+- [x] Each Application uses values files: `helm-values/{service}.yaml` + `helm-values/dev.yaml`
+- [x] Sync policy: `automated` with `selfHeal: true` and `prune: true`
+- [x] Destination namespace: `petclinic-dev`
+- [x] Source repo: petclinic-platform Git URL
 - [ ] All 8 applications visible and synced in ArgoCD UI
 - [ ] Verified: push a tag change → ArgoCD auto-syncs → new image deployed
 

@@ -1618,7 +1618,7 @@ ArgoCD automates this — see [GitOps with ArgoCD](#gitops-with-argocd).
 
 ## GitOps with ArgoCD
 
-**Implementation:** Partial (PETPLAT-112). `k8s/argocd/install/` pins Argo CD v3.5.2 and schedules it onto the observability node. Not installed.
+**Implementation:** Partial (PETPLAT-112, PETPLAT-113). `k8s/argocd/install/` pins Argo CD v3.5.2. `k8s/argocd/applications/dev/` has one Application per service (auto-sync). Not installed. Prod Applications are not written. Image account, image tag, and the RDS hostname are not in these files.
 
 ### Architecture Decision
 
