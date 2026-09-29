@@ -198,6 +198,11 @@ Enable these in Cursor Settings → MCP after cloning. They are inactive until t
 | `suggest-validate.sh` | Info | Suggests validate/dry-run after editing .tf, K8s .yaml, Helm, or pipeline files |
 | `block-secret-commit.sh` | Block | `git add .`, committing .env, .tfvars, .tfvars.json, .pem, .key files |
 | `block-mcp-destroy.sh` | Block | `destroy` via MCP Terraform/Terragrunt tools |
+| `ask-cluster-mutation.sh` | Ask | `kubectl apply`, `kubectl delete`, `helm install`, `helm upgrade`, `argocd app sync`, `git push`. `--dry-run=client` and `--dry-run=server` stay allowed. Prod deletes and `terraform destroy` stay denied. |
+| `block-hook-edits.sh` | Block | Writes to `.cursor/hooks/` or `.cursor/hooks.json`, including shell redirects. The rest of `.cursor/` stays editable. |
+| `block-secret-read.sh` | Block | Reads of `.env`, `*.tfvars`, `*.pem`, `*.key`, `credentials*`, and the same secret names `block-secret-commit.sh` already refuses to stage. `*.tfvars.example` stays readable. |
+
+`.cursorignore` hides those secret names from indexing. `tests/test_hooks.py` feeds each script JSON on stdin. Run it with `python3 -m unittest tests/test_hooks.py`.
 
 ## Technical Specification
 

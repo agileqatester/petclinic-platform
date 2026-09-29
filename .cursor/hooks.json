@@ -16,6 +16,26 @@
       {
         "command": "bash .cursor/hooks/block-secret-commit.sh",
         "failClosed": true
+      },
+      {
+        "command": "bash .cursor/hooks/block-hook-edits.sh",
+        "failClosed": true
+      },
+      {
+        "command": "bash .cursor/hooks/ask-cluster-mutation.sh",
+        "failClosed": true
+      }
+    ],
+    "preToolUse": [
+      {
+        "command": "bash .cursor/hooks/block-hook-edits.sh",
+        "failClosed": true
+      }
+    ],
+    "beforeReadFile": [
+      {
+        "command": "bash .cursor/hooks/block-secret-read.sh",
+        "failClosed": true
       }
     ],
     "beforeMCPExecution": [

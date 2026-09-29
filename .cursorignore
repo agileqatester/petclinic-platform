@@ -1,0 +1,18 @@
+# Hide secret-shaped files from the agent. block-secret-read.sh denies the same names.
+# *.tfvars does not match *.tfvars.example.
+
+.env
+.env.*
+*.tfvars
+*.tfvars.json
+*.pem
+*.key
+*.p12
+*.pfx
+credentials
+credentials.*
+kubeconfig
+kubeconfig.*
+aws-credentials
+backend.hcl
+**/backend.hcl

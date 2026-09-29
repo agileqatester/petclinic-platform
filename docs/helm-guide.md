@@ -27,7 +27,7 @@ The service file sets the name, port, image name, image tag, Spring profiles, Co
 
 ## Image tag
 
-Each service file has `image.tag: "0000000"`. CI replaces that field with a seven-character commit SHA. Do not use `latest`. The account stays the literal `{account}`. At install, pass both with `--set-string`. The chart coerces them to strings so a numeric account id does not render as `%!s(int64=…)`.
+Each service file has `image.tag: "0000000"`. CI replaces that field with a seven-character commit SHA. Do not use `latest`. The account stays the literal `{account}`. Customers, visits, and vets keep `{rds-endpoint}` in the JDBC URL. Leave those three placeholders in git. [`dev-startup.md`](dev-startup.md) sets the live account, tag, and RDS hostname on the Argo CD Applications. The chart coerces account and tag to strings so a numeric account id does not render as `%!s(int64=…)`.
 
 ## Add a service
 
